@@ -1,0 +1,7 @@
+PROMPT : Reply with exactly: aiia-docker stage 1 is alive.
+GUI    : http://localhost:7860
+EVENT  : 61ddfa0b765c4626addccbf1a52db7ee
+--- raw SSE stream ---
+event: complete
+data: ["aiia-docker stage 1 is alive.", null]
+

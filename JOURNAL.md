@@ -71,6 +71,19 @@ reorder branch for any adapter targeting `linear_attn.out_proj` (upstream #21125
 merged 2026-09-30, absent from the local checkout at HEAD 2026-08-27). Base weights are stored in a
 V-head-reordered layout different from HF's, so a mis-reordered adapter multiplies the wrong
 weights rather than failing loudly. Non-matmul SSM params can never be LoRA targets.
+**Findings (stage 1 build):** two real traps, both cost build cycles and both now in this course's
+ops notes. (a) The llama.cpp server image only resolves its own `libllama-server-impl.so` while the
+working directory is `/app` — any other `WORKDIR` kills it with "error while loading shared
+libraries". Confirmed by hand: works at `/app`, fails at `/models`. The Dockerfile therefore keeps
+the inherited `WORKDIR` and addresses the model by absolute path, rather than exporting
+`LD_LIBRARY_PATH=/app` to paper over it. (b) The pinned Qwen3.5-2B GGUF is a **thinking** model: the
+server fills `reasoning_content` and can burn thousands of tokens before `content` is ever written
+(observed 2355 tokens at ~7.7 t/s, client timeout, empty answer). `chat_template_kwargs:
+{enable_thinking: false}` fixes it — the reply then lands in ~1.5 s. Worth knowing for the HF Space,
+which will hit the same behaviour.
+**Notes (stage 1 measured):** inference settles at ~1.4–1.8 GiB RSS against its 4 GiB limit on CPU;
+the gradio container runs comfortably in 512 MiB and survives `read_only: true` with `HOME=/tmp` and
+a `/tmp` tmpfs — that combination is not obvious and was worth testing rather than assuming.
 **Duties / To-do:** Green light given. Working convention from here: one stage at a time, one PR per stage, merge before the next stage starts.
 **Notes:** The plan carries a **pinned-sources table** (model card, corpora, llama.cpp docs, Compose
 spec) and the rule that documents in this repo cite those and only those — a fact re-derived by

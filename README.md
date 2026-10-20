@@ -34,7 +34,24 @@ training/        the "few epochs" stage (dataset prep + fine-tune), outside the 
 evidence/        run logs, measurements and figures the report is built from
 ```
 
+## Run
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+GUI: <http://localhost:7860> — the only published port. The inference API is reachable
+only from inside the compose network (`http://inference:8080/v1`).
+
+```bash
+./scripts/evidence.sh    # bring up, health-check, send a fixed prompt, collect evidence
+docker compose down
+```
+
 ## Status
 
-Pre-development: skeleton and plan only. See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md).
-Work log and findings: [`JOURNAL.md`](JOURNAL.md).
+Stage 1 (CPU two-container baseline) is implemented and running: llama-server serves a pinned
+Qwen3.5-2B GGUF in one container, a gradio UI in a second, the two wired by `compose.yaml` with the
+inference port reachable only inside the compose network. See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md)
+for the staged plan; work log and findings in [`JOURNAL.md`](JOURNAL.md).
