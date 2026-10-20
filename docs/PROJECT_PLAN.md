@@ -290,6 +290,24 @@ the plan predicted, because peft stores LoRA parameters in fp32 regardless of th
 discriminating evidence for this bullet is therefore §6.1 R4's two metrics (`ast.parse` adherence and
 pass@1 on a HumanEval slice), measured base vs adapter — not the loss delta.
 
+### 6.3 P4 benchmark — base vs adapter, and how it is measured
+
+The design below was fixed **before** the measurement ran, so the method could not be chosen after
+seeing the result. Suite: `bench/prompts.json`. Harness: `scripts/bench_finetune.sh` +
+`scripts/bench_finetune_probe.py`. Record: `evidence/bench-finetune.json`. Reading:
+`docs/BENCHMARK_REPORT.md`.
+
+| Decision | Why |
+|---|---|
+| Sampling follows the **model card**, not temperature 0 | The card's recommendation for **non-thinking mode, text tasks** — the mode this stack serves — is `temperature=1.0, top_p=1.00, top_k=20, min_p=0.0, presence_penalty=2.0, repetition_penalty=1.0`. Greedy decoding is also not reproducible here: stages 2–3 measured the same request giving different completions on different backends at `temperature 0`, so it buys determinism it does not actually have. Reproducibility comes from a **fixed seed per run** (`seed_base + run`) instead. |
+| Every sampling parameter is sent **explicitly** | llama.cpp's own defaults differ from the card's (temp 0.80, top_k 40, top_p 0.95, min_p 0.05). Leaving any of them implicit would silently benchmark a configuration nobody recommended. |
+| The controlled pair is **base vs base + adapter**, both from the pinned revision, both **Q4_K_M** | The shipped production GGUF is the **instruct** lineage (`unsloth/Qwen3.5-2B-GGUF`), while the adapter was trained on `Qwen3.5-2B-Base`. Comparing the adapter against the instruct model would conflate "what the adapter did" with "base vs post-trained". The instruct model is measured as a labelled **reference point** only. |
+| 10 fixed prompts × 5 runs × 3 models, coding **and** non-coding, trivial **and** larger-context | Degradation from code-only SFT shows up as lost format adherence, repetition, language mixing and worse instruction following — none of which a coding-only suite would reveal. Two prompts are canaries with verifiable answers (arithmetic; JSON-only output). |
+| `max_tokens` per prompt, far below the card's 32k suggestion | A fixed generation budget is what makes the comparison fair; 32k outputs would also blow the 8192 context and the wall clock. |
+| Held-out **perplexity** on general prose and on code | A quantitative complement to the qualitative reading: the classic way to see a general-ability regression. |
+
+
+
 ## 7. Evidence to collect (the report is built from this, not the reverse)
 
 - `docker compose ps` / `up` output showing the healthcheck gating the GUI start;
