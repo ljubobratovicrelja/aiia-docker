@@ -176,19 +176,28 @@ number of optional items we attempt is bounded by the page budget, not by ambiti
 - Carried uncertainty: OpenCodeInstruct's 5M row count is README-sourced (the datasets server has
   indexed 1.4M); the runtime figures are projections, to be measured on the real GPU.
 
-**R5 — HF Space: available, but not the cheap bullet it looks like.**
+**R5 — HF Space: the free route exists, and it is a Gradio Space on ZeroGPU.**
 
-- Creating a **Docker** Space on a personal account **requires a paid plan (PRO, ~$9/month)**; the
-  free tier covers only Gradio Spaces on ZeroGPU, which is a PyTorch-oriented path and does not fit
-  a llama.cpp server. Cheapest paid GPU tier is T4-small at **$0.40/hr**.
-- A Docker Space is **one container with one exposed port** (`app_port`), so the two-container
-  GUI/inference split cannot be reproduced there. It would be a *second, reduced* deployment.
-- Space disk is 50 GB and non-persistent: a 1–2 GB GGUF is either committed to the Space repo
-  (re-checked out on every build) or pulled at runtime and lost on restart.
-- Work if we do it: ~2–4 hours — obtain or convert a GGUF, single-container Space, `app_port: 8080`
-  with `--host 0.0.0.0`, build wait.
-- **Conclusion: skip unless a PRO plan is already in hand** (O3). It is one line of the report, not
-  an evening plus a subscription.
+- Re-read of the spec: the body says *"Optionally you can … publish the model in Hugging Face Spaces
+  so that inference can be done through an API"*, and the max-grade list repeats it as *"Upload to
+  Hugging face spaces and use of online API inference"*. Nothing in it requires a paid tier, and
+  nothing requires the Space to run our container.
+- Free personal accounts **can host up to 2 Gradio Spaces on ZeroGPU** — "Free personal accounts in
+  good standing can still host up to 2 Gradio Spaces running on ZeroGPU". ZeroGPU is a shared RTX
+  PRO 6000 Blackwell handed out through the `@spaces.GPU` decorator, explicitly built for
+  PyTorch/`transformers` apps; a 2B fits easily in the 48 GB `large` slice.
+- What needs PRO (~$9/month) is a **Docker** Space, and compute-backed Spaces generally *outside*
+  that ZeroGPU exception. That is the expensive route, not the only one — and not the one the spec
+  asks for.
+- Plan: publish the **fine-tuned model** (base + adapter, or merged) to the Hub — free — and serve it
+  from a small **Gradio Space on ZeroGPU**, which gets an API for free (`gradio_client` / the Space's
+  own HTTP endpoints). The Space is a second deployment of the *same artefacts*: `transformers` there,
+  llama.cpp locally.
+- Quota to respect: **5 minutes of GPU time per day** on a free account (2 minutes unauthenticated),
+  medium queue priority; CPU-tier Spaces sleep after 48 h idle and wake on the next visit. Ample for
+  a demo, not for a benchmark run.
+- Judgement: **do it** — it is an evening's work, the app itself is small, and it is the only
+  max-grade bullet left that costs nothing but time.
 
 **R6 — the Compose keys that actually take effect on this engine.**
 
@@ -224,7 +233,7 @@ container actually gets working CUDA — no GPU workload was run. That last one 
 |---|---|---|
 | O1 | Qwen3.5-2B vs a Qwen3-1.7B-class model | **`Qwen3.5-2B-Base`, text-only** (§6.1 R1) |
 | O2 | Corpus slice | **Magicoder-OSS-Instruct-75K, `train[:3000]`** (§6.1 R4); CodeAlpaca-20k if a lighter run is wanted |
-| O3 | HF Space | **skip** — a Docker Space needs PRO (~$9/mo) and is single-container (§6.1 R5); revisit only if a PRO plan already exists |
+| O3 | HF Space | **yes, via the free route** — Gradio Space on ZeroGPU serving the fine-tuned model through its own API (§6.1 R5). A Docker Space would need PRO and is not required by the spec |
 | O4 | Adapter served, or training kept as a separate stage | **adapter served** if the llama.cpp converter fix is applied; else merged model (§6.1 R2) |
 | O5 | GPU: compose profile or the only target | profile, so the CPU-first portability claim survives |
 
@@ -250,6 +259,7 @@ points at the same thing.
 | Axolotl Qwen3.5 fine-tune guide (LoRA target modules for GDN) | https://docs.axolotl.ai/docs/models/qwen3.5.html |
 | llama.cpp LoRA converter fix for linear-attn `out_proj` — PR #28324 (issue #21125) | https://github.com/ggml-org/llama.cpp/pull/28324 |
 | HF Spaces overview (hardware, limits, plan requirement) | https://huggingface.co/docs/hub/spaces-overview |
+| HF ZeroGPU (shared GPU, `@spaces.GPU`, daily quotas) | https://huggingface.co/docs/hub/spaces-zerogpu |
 | HF Spaces — Docker SDK and `app_port` | https://huggingface.co/docs/hub/spaces-sdks-docker |
 | HF Spaces — Gradio SDK and ZeroGPU | https://huggingface.co/docs/hub/spaces-sdks-gradio |
 | HF pricing (tiers, PRO, GPU rates) | https://huggingface.co/pricing |
