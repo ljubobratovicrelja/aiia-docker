@@ -38,12 +38,15 @@ and loaded against the same one. `all-linear` is the wrong instrument here: it w
 vision tower and it silently skips names that do not match, so the target list is explicit. QLoRA is
 discouraged on this family; on the GB10, neither `causal_conv1d` nor `fla` has a build, so GDN runs
 on the slow PyTorch reference (acceptable at this scale).
-**Findings (risk R5 — HF Spaces are not free):** creating a Docker or Gradio Space on a personal
-account needs a **paid plan (PRO, ~$9/month)**; the free tier only allows Gradio Spaces on ZeroGPU,
-which is PyTorch-oriented and does not fit a llama.cpp server. A Docker Space is also a single
-container with a single exposed port, so it cannot reproduce the two-container split. The brief
-lists "upload to HF Spaces + online API inference" as a max-grade item, so this is a real
-correction to the plan's assumptions rather than a detail.
+**Findings (risk R5 — HF Spaces: free route confirmed, first reading wrong):** the first pass read
+"Gradio and Docker Spaces run on compute and require a paid plan" as a blanket cost and concluded the
+bullet needed PRO. Wrong: the same sentence continues *"Free personal accounts in good standing can
+still host up to 2 Gradio Spaces running on ZeroGPU"*. ZeroGPU is a shared RTX PRO 6000 Blackwell
+via the `@spaces.GPU` decorator, PyTorch/transformers-oriented, 48 GB in the default slice, with a
+**5 min/day GPU quota** for free accounts. So the spec's clause — publish the model to Spaces and
+serve inference over an API — is reachable at zero cost; only a *Docker* Space needs PRO. The Space
+is a second deployment of the same artefacts (transformers there, llama.cpp locally), not the same
+server.
 **Findings (risk R6 — Compose keys, verified on the engine):** `deploy.resources.limits` **does**
 take effect under plain `docker compose up` (Engine 29.2.1 / Compose v5.0.2), so the service-level
 `mem_limit`/`cpus` shorthand is unnecessary and declaring both invites drift. `expose:` with no
