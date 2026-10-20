@@ -198,6 +198,20 @@ answer. A raw wall-clock speedup would have been flattering (7.47× isolated, 20
 "Same prompt, same answer on both backends" is not a property this stack has; "same prompt, roughly
 the same rate" is — and that is the only claim the numbers support.
 
+**Decision (P4 host — train on the RTX 3090 Ti machine, not the Spark):** the LoRA we planned (D7:
+bf16, explicit `target_modules`, no quantization) fits 24 GB comfortably — a 2B in bf16 is ~5 GB of
+weights plus activations and optimizer state — and that machine measured ~2.4× the GB10 on this very
+model (320.66 vs 134.40 tok/s). The tie-breaker is **disk, not speed**: the Spark's `/` is 97 % full
+(32 GB free) while the other machine has 311 GB free, and the training base image alone
+(`nvcr.io/nvidia/pytorch:26.09-py3`, multi-arch — both amd64 and arm64 exist) is ~12 GB compressed
+and ~25 GB unpacked. Consequence for the pipeline: training runs off the serving host, the adapter
+comes back (~30 MB artifact), gets converted to GGUF and served on the stage-3 stack, so base vs
+adapter is measured on the same benchmark. **Fallback if the run grows past 24 GB** (full-parameter
+SFT rather than LoRA): the Spark's 128 GB unified memory is the reason to keep the GB10 in the
+picture at all, and disk would have to be freed first. Unverified and worth one timed spike before a
+long run: whether the GDN (Mamba) layers get their fast conv kernels on either host — `causal-conv1d`
+is source-only on both architectures, Triton ships wheels for both.
+
 **Notes (stage 3 — measured, GB10):** the 1.28 GB GGUF is downloaded once by the shared `model`
 stage; the second target's build is a pure cache hit (`model 2/2 RUN … CACHED`, `COPY --from`
 0.0–0.5 s). Splitting the download into its own stage cost **nothing** in image size: the CPU image
