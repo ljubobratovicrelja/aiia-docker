@@ -34,6 +34,21 @@ training/        the "few epochs" stage (dataset prep + fine-tune), outside the 
 evidence/        run logs, measurements and figures the report is built from
 ```
 
+## Run
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+GUI: <http://localhost:7860> — the only published port. The inference API is reachable
+only from inside the compose network (`http://inference:8080/v1`).
+
+```bash
+./scripts/evidence.sh    # bring up, health-check, send a fixed prompt, collect evidence
+docker compose down
+```
+
 ## Status
 
 Pre-development: skeleton and plan only. See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md).

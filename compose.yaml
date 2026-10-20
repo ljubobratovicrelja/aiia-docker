@@ -1,0 +1,38 @@
+name: aiia-docker
+
+services:
+  # Container 1 — the model + its OpenAI-compatible HTTP server.
+  # The port is exposed to the compose network only: no `ports:` mapping,
+  # so this service is unreachable from outside the stack.
+  inference:
+    build:
+      context: ./inference
+    image: aiia-docker/inference:stage-1
+    expose:
+      - "8080"
+    shm_size: "128m"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    user: "65534:65534"
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4g
+    restart: unless-stopped
+
+  # Container 2 — the only published entry point.
+  gui:
+    build:
+      context: ./gui
+    image: aiia-docker/gui:stage-1
+    ports:
+      - "7860:7860"
+    environment:
+      API_URL: http://inference:8080/v1
+      MODEL_ALIAS: aiia-local
+    depends_on:
+      inference:
+        condition: service_healthy
+    restart: unless-stopped
