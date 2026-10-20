@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Models and datasets (large, pulled at build time or mounted)
+models/*.gguf
+models/*.gguf.*
+data/raw/
+data/hf_cache/
+
+# Local run artifacts
+.env
+*.log
