@@ -1,8 +1,8 @@
 ======================================================================
 build-cache.txt — Docker layer-cache demonstration (aiia-docker stage 2)
 ======================================================================
-date            : 2026-10-20T18:59:41+02:00
-branch          : stage-2-evidence (9b6494a)
+date            : 2026-10-20T19:00:35+02:00
+branch          : stage-2-evidence (a89d3a8)
 engine / compose: 29.2.1 / 5.0.2
 working tree    : clean before the run
 
@@ -56,86 +56,89 @@ $ docker compose build --progress=plain
 #3 DONE 0.0s
 
 #4 [gui internal] load metadata for docker.io/library/python:3.12-slim
-#4 DONE 0.2s
+#4 ...
 
 #5 [inference] resolve image config for docker-image://docker.io/docker/dockerfile:1
-#5 DONE 0.2s
+#5 DONE 0.4s
 
-#6 [gui internal] load .dockerignore
-#6 transferring context: 64B done
-#6 DONE 0.0s
+#6 [inference] docker-image://docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+#6 CACHED
 
-#7 [gui 1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+#7 [inference internal] load metadata for ghcr.io/ggml-org/llama.cpp:server
 #7 DONE 0.0s
 
-#8 [gui internal] load build context
-#8 transferring context: 2.18kB done
+#8 [inference internal] load .dockerignore
+#8 transferring context: 45B done
 #8 DONE 0.0s
 
-#9 [inference] docker-image://docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-#9 CACHED
+#9 [inference 1/2] FROM ghcr.io/ggml-org/llama.cpp:server
+#9 DONE 0.0s
 
-#10 [gui 2/5] WORKDIR /app
+#10 [inference 2/2] RUN mkdir -p /models  && curl -fL --retry 3 -o "/models/Qwen3.5-2B-Q4_K_M.gguf"         "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/f6d5376be1edb4d416d56da11e5397a961aca8ae/Qwen3.5-2B-Q4_K_M.gguf"  && echo "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223  /models/Qwen3.5-2B-Q4_K_M.gguf" | sha256sum -c -
 #10 CACHED
 
-#11 [gui 4/5] RUN pip install --no-cache-dir -r requirements.txt
-#11 CACHED
+#11 [inference] exporting to image
+#11 exporting layers done
+#11 writing image sha256:e744c73f6f19984ae94e32ec4eafb9057f11e51cc982ee41540774b01e70d190 done
+#11 naming to docker.io/aiia-docker/inference:stage-1 done
+#11 DONE 0.0s
 
-#12 [gui 3/5] COPY requirements.txt .
-#12 CACHED
+#12 [inference] resolving provenance for metadata file
+#12 DONE 0.0s
 
-#13 [gui 5/5] COPY app.py .
-#13 CACHED
+#4 [gui internal] load metadata for docker.io/library/python:3.12-slim
+#4 DONE 0.6s
 
-#14 [gui] exporting to image
-#14 exporting layers done
-#14 writing image sha256:f4ddfd8030566d3e8ceab1b9fff72b90ab8653195ccda2bfde78933476e399aa done
-#14 naming to docker.io/aiia-docker/gui:stage-1 done
+#13 [gui internal] load .dockerignore
+#13 transferring context: 64B done
+#13 DONE 0.0s
+
+#14 [gui 1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 #14 DONE 0.0s
 
-#15 [gui] resolving provenance for metadata file
+#15 [gui internal] load build context
+#15 transferring context: 2.18kB done
 #15 DONE 0.0s
 
-#16 [inference internal] load metadata for ghcr.io/ggml-org/llama.cpp:server
-#16 DONE 0.0s
+#16 [gui 3/5] COPY requirements.txt .
+#16 CACHED
 
-#17 [inference internal] load .dockerignore
-#17 transferring context: 45B done
-#17 DONE 0.0s
+#17 [gui 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#17 CACHED
 
-#18 [inference 1/2] FROM ghcr.io/ggml-org/llama.cpp:server
-#18 DONE 0.0s
+#18 [gui 2/5] WORKDIR /app
+#18 CACHED
 
-#19 [inference 2/2] RUN mkdir -p /models  && curl -fL --retry 3 -o "/models/Qwen3.5-2B-Q4_K_M.gguf"         "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/f6d5376be1edb4d416d56da11e5397a961aca8ae/Qwen3.5-2B-Q4_K_M.gguf"  && echo "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223  /models/Qwen3.5-2B-Q4_K_M.gguf" | sha256sum -c -
+#19 [gui 5/5] COPY app.py .
 #19 CACHED
 
-#20 [inference] exporting to image
+#20 [gui] exporting to image
 #20 exporting layers done
-#20 writing image sha256:e744c73f6f19984ae94e32ec4eafb9057f11e51cc982ee41540774b01e70d190 done
-#20 naming to docker.io/aiia-docker/inference:stage-1 done
+#20 writing image sha256:f4ddfd8030566d3e8ceab1b9fff72b90ab8653195ccda2bfde78933476e399aa done
+#20 naming to docker.io/aiia-docker/gui:stage-1 done
 #20 DONE 0.0s
 
-#21 [inference] resolving provenance for metadata file
+#21 [gui] resolving provenance for metadata file
 #21 DONE 0.0s
- Image aiia-docker/gui:stage-1 Built 
  Image aiia-docker/inference:stage-1 Built 
+ Image aiia-docker/gui:stage-1 Built 
   -- classified: one line per build step --
   RE-RAN  [inference internal] load build definition from Dockerfile
   RE-RAN  [gui internal] load build definition from Dockerfile
-  RE-RAN  [gui internal] load metadata for docker.io/library/python:3.12-slim
   RE-RAN  [inference] resolve image config for docker-image://docker.io/docker/dockerfile:1
-  RE-RAN  [gui internal] load .dockerignore
-  RE-RAN  [gui 1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
-  RE-RAN  [gui internal] load build context
   CACHED  [inference] docker-image://docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-  CACHED  [gui 2/5] WORKDIR /app
-  CACHED  [gui 4/5] RUN pip install --no-cache-dir -r requirements.txt
-  CACHED  [gui 3/5] COPY requirements.txt .
-  CACHED  [gui 5/5] COPY app.py .
   RE-RAN  [inference internal] load metadata for ghcr.io/ggml-org/llama.cpp:server
   RE-RAN  [inference internal] load .dockerignore
   RE-RAN  [inference 1/2] FROM ghcr.io/ggml-org/llama.cpp:server
   CACHED  [inference 2/2] RUN mkdir -p /models && curl -fL --retry 3 -o "/models/Qwen3.5-2B-Q4_K_M.gguf" "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/f6d5376be1edb4d416d56da11e5397a961aca8ae/Qwen3.5-2B-Q4_K_M.gguf" && echo "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223 /models/Qwen3.5-2B-Q4_K_M.gguf" | sha256sum -c -
+  RE-RAN  [gui internal] load metadata for docker.io/library/python:3.12-slim
+  RE-RAN  [gui internal] load .dockerignore
+  RE-RAN  [gui 1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+  RE-RAN  [gui internal] load build context
+  CACHED  [gui 3/5] COPY requirements.txt .
+  CACHED  [gui 4/5] RUN pip install --no-cache-dir -r requirements.txt
+  CACHED  [gui 2/5] WORKDIR /app
+  CACHED  [gui 5/5] COPY app.py .
   >> VERIFIED: CACHED for step matching /RUN pip install/
        CACHED  [gui 4/5] RUN pip install --no-cache-dir -r requirements.txt
   >> VERIFIED: CACHED for step matching /RUN mkdir -p /models/
@@ -179,10 +182,10 @@ $ docker compose build --progress=plain gui
 #7 [3/5] COPY requirements.txt .
 #7 CACHED
 
-#8 [2/5] WORKDIR /app
+#8 [4/5] RUN pip install --no-cache-dir -r requirements.txt
 #8 CACHED
 
-#9 [4/5] RUN pip install --no-cache-dir -r requirements.txt
+#9 [2/5] WORKDIR /app
 #9 CACHED
 
 #10 [5/5] COPY app.py .
@@ -200,8 +203,8 @@ $ docker compose build --progress=plain gui
   -- classified: one line per build step --
   RE-RAN  [1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
   CACHED  [3/5] COPY requirements.txt .
-  CACHED  [2/5] WORKDIR /app
   CACHED  [4/5] RUN pip install --no-cache-dir -r requirements.txt
+  CACHED  [2/5] WORKDIR /app
   CACHED  [5/5] COPY app.py .
   >> VERIFIED: CACHED for step matching /RUN pip install/
        CACHED  [4/5] RUN pip install --no-cache-dir -r requirements.txt
@@ -215,7 +218,7 @@ $ docker compose build --progress=plain gui
 B2. change the app code for real (append a comment) — this is the case
     the Dockerfile layer order exists to handle
 ======================================================================
-$ printf '%s\n' '# cache-demo marker 2026-10-20T18:59:42+02:00 pid=2365823 rand=31910' >> gui/app.py
+$ printf '%s\n' '# cache-demo marker 2026-10-20T19:00:37+02:00 pid=2367270 rand=25410' >> gui/app.py
 $ git diff --stat gui/app.py
  gui/app.py | 2 ++
  1 file changed, 2 insertions(+)
@@ -225,8 +228,8 @@ B2. build after the content change
 ----------------------------------------------------------------------
 $ docker compose build --progress=plain gui
 --progress is a global compose flag, better use `docker compose --progress xx build ...
- Image aiia-docker/gui:stage-1 Building 
  Image aiia-docker/inference:stage-1 Building 
+ Image aiia-docker/gui:stage-1 Building 
 #1 [internal] load local bake definitions
 #1 reading from stdin 984B done
 #1 DONE 0.0s
@@ -236,7 +239,7 @@ $ docker compose build --progress=plain gui
 #2 DONE 0.0s
 
 #3 [internal] load metadata for docker.io/library/python:3.12-slim
-#3 DONE 0.2s
+#3 DONE 0.3s
 
 #4 [internal] load .dockerignore
 #4 transferring context: 64B done
@@ -263,7 +266,7 @@ $ docker compose build --progress=plain gui
 
 #11 exporting to image
 #11 exporting layers done
-#11 writing image sha256:712e276b6d66f5f5a117b65be02cc00d21b412139c10af5ef411cc179a24e5c1 done
+#11 writing image sha256:8c4bb47d53797b7602f57c8ec8f8a452ec52cb1f8ef5ee1f429ec9e294abfdd8 done
 #11 naming to docker.io/aiia-docker/gui:stage-1 done
 #11 DONE 0.0s
 
@@ -365,101 +368,101 @@ D. final rebuild of both services after restoration
 ----------------------------------------------------------------------
 $ docker compose build --progress=plain
 --progress is a global compose flag, better use `docker compose --progress xx build ...
- Image aiia-docker/inference:stage-1 Building 
  Image aiia-docker/gui:stage-1 Building 
+ Image aiia-docker/inference:stage-1 Building 
 #1 [internal] load local bake definitions
 #1 reading from stdin 1.00kB done
 #1 DONE 0.0s
 
-#2 [inference internal] load build definition from Dockerfile
-#2 transferring dockerfile: 1.97kB done
+#2 [gui internal] load build definition from Dockerfile
+#2 transferring dockerfile: 284B done
 #2 DONE 0.0s
 
-#3 [gui internal] load build definition from Dockerfile
-#3 transferring dockerfile: 284B done
+#3 [inference internal] load build definition from Dockerfile
+#3 transferring dockerfile: 1.97kB done
 #3 DONE 0.0s
 
-#4 [gui internal] load metadata for docker.io/library/python:3.12-slim
+#4 [inference] resolve image config for docker-image://docker.io/docker/dockerfile:1
 #4 DONE 0.2s
 
-#5 [inference] resolve image config for docker-image://docker.io/docker/dockerfile:1
-#5 DONE 0.2s
+#5 [gui internal] load metadata for docker.io/library/python:3.12-slim
+#5 DONE 0.4s
 
-#6 [gui internal] load .dockerignore
-#6 transferring context: 64B done
-#6 DONE 0.0s
+#6 [inference] docker-image://docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+#6 CACHED
 
-#7 [gui 1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+#7 [inference internal] load metadata for ghcr.io/ggml-org/llama.cpp:server
 #7 DONE 0.0s
 
-#8 [inference] docker-image://docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-#8 CACHED
+#8 [inference internal] load .dockerignore
+#8 transferring context: 45B done
+#8 DONE 0.0s
 
-#9 [gui internal] load build context
-#9 transferring context: 2.18kB done
+#9 [inference 1/2] FROM ghcr.io/ggml-org/llama.cpp:server
 #9 DONE 0.0s
 
-#10 [gui 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#10 [inference 2/2] RUN mkdir -p /models  && curl -fL --retry 3 -o "/models/Qwen3.5-2B-Q4_K_M.gguf"         "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/f6d5376be1edb4d416d56da11e5397a961aca8ae/Qwen3.5-2B-Q4_K_M.gguf"  && echo "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223  /models/Qwen3.5-2B-Q4_K_M.gguf" | sha256sum -c -
 #10 CACHED
 
-#11 [gui 3/5] COPY requirements.txt .
-#11 CACHED
+#11 [inference] exporting to image
+#11 exporting layers done
+#11 writing image sha256:e744c73f6f19984ae94e32ec4eafb9057f11e51cc982ee41540774b01e70d190 done
+#11 naming to docker.io/aiia-docker/inference:stage-1 done
+#11 DONE 0.0s
 
-#12 [gui 2/5] WORKDIR /app
-#12 CACHED
+#12 [inference] resolving provenance for metadata file
+#12 DONE 0.0s
 
-#13 [gui 5/5] COPY app.py .
-#13 CACHED
+#13 [gui internal] load .dockerignore
+#13 transferring context: 64B done
+#13 DONE 0.0s
 
-#14 [gui] exporting to image
-#14 exporting layers done
-#14 writing image sha256:f4ddfd8030566d3e8ceab1b9fff72b90ab8653195ccda2bfde78933476e399aa done
-#14 naming to docker.io/aiia-docker/gui:stage-1 done
+#14 [gui 1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 #14 DONE 0.0s
 
-#15 [gui] resolving provenance for metadata file
+#15 [gui internal] load build context
+#15 transferring context: 2.18kB done
 #15 DONE 0.0s
 
-#16 [inference internal] load metadata for ghcr.io/ggml-org/llama.cpp:server
-#16 DONE 0.0s
+#16 [gui 3/5] COPY requirements.txt .
+#16 CACHED
 
-#17 [inference internal] load .dockerignore
-#17 transferring context: 45B done
-#17 DONE 0.0s
+#17 [gui 4/5] RUN pip install --no-cache-dir -r requirements.txt
+#17 CACHED
 
-#18 [inference 1/2] FROM ghcr.io/ggml-org/llama.cpp:server
-#18 DONE 0.0s
+#18 [gui 2/5] WORKDIR /app
+#18 CACHED
 
-#19 [inference 2/2] RUN mkdir -p /models  && curl -fL --retry 3 -o "/models/Qwen3.5-2B-Q4_K_M.gguf"         "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/f6d5376be1edb4d416d56da11e5397a961aca8ae/Qwen3.5-2B-Q4_K_M.gguf"  && echo "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223  /models/Qwen3.5-2B-Q4_K_M.gguf" | sha256sum -c -
+#19 [gui 5/5] COPY app.py .
 #19 CACHED
 
-#20 [inference] exporting to image
+#20 [gui] exporting to image
 #20 exporting layers done
-#20 writing image sha256:e744c73f6f19984ae94e32ec4eafb9057f11e51cc982ee41540774b01e70d190 done
-#20 naming to docker.io/aiia-docker/inference:stage-1 done
+#20 writing image sha256:f4ddfd8030566d3e8ceab1b9fff72b90ab8653195ccda2bfde78933476e399aa done
+#20 naming to docker.io/aiia-docker/gui:stage-1 done
 #20 DONE 0.0s
 
-#21 [inference] resolving provenance for metadata file
+#21 [gui] resolving provenance for metadata file
 #21 DONE 0.0s
- Image aiia-docker/inference:stage-1 Built 
  Image aiia-docker/gui:stage-1 Built 
+ Image aiia-docker/inference:stage-1 Built 
   -- classified: one line per build step --
-  RE-RAN  [inference internal] load build definition from Dockerfile
   RE-RAN  [gui internal] load build definition from Dockerfile
-  RE-RAN  [gui internal] load metadata for docker.io/library/python:3.12-slim
+  RE-RAN  [inference internal] load build definition from Dockerfile
   RE-RAN  [inference] resolve image config for docker-image://docker.io/docker/dockerfile:1
-  RE-RAN  [gui internal] load .dockerignore
-  RE-RAN  [gui 1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+  RE-RAN  [gui internal] load metadata for docker.io/library/python:3.12-slim
   CACHED  [inference] docker-image://docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-  RE-RAN  [gui internal] load build context
-  CACHED  [gui 4/5] RUN pip install --no-cache-dir -r requirements.txt
-  CACHED  [gui 3/5] COPY requirements.txt .
-  CACHED  [gui 2/5] WORKDIR /app
-  CACHED  [gui 5/5] COPY app.py .
   RE-RAN  [inference internal] load metadata for ghcr.io/ggml-org/llama.cpp:server
   RE-RAN  [inference internal] load .dockerignore
   RE-RAN  [inference 1/2] FROM ghcr.io/ggml-org/llama.cpp:server
   CACHED  [inference 2/2] RUN mkdir -p /models && curl -fL --retry 3 -o "/models/Qwen3.5-2B-Q4_K_M.gguf" "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/f6d5376be1edb4d416d56da11e5397a961aca8ae/Qwen3.5-2B-Q4_K_M.gguf" && echo "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223 /models/Qwen3.5-2B-Q4_K_M.gguf" | sha256sum -c -
+  RE-RAN  [gui internal] load .dockerignore
+  RE-RAN  [gui 1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+  RE-RAN  [gui internal] load build context
+  CACHED  [gui 3/5] COPY requirements.txt .
+  CACHED  [gui 4/5] RUN pip install --no-cache-dir -r requirements.txt
+  CACHED  [gui 2/5] WORKDIR /app
+  CACHED  [gui 5/5] COPY app.py .
   >> VERIFIED: CACHED for step matching /COPY app.py/
        CACHED  [gui 5/5] COPY app.py .
   >> VERIFIED: CACHED for step matching /RUN mkdir -p /models/

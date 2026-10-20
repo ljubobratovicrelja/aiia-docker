@@ -12,7 +12,7 @@ Everything here is CPU-only — GPU is a later stage (see the last three rows).
 
 | # | Criterion (brief wording) | Where it is met | Artifact that proves it | Command that regenerates it |
 |---|---|---|---|---|
-| 1 | *"a Docker container capable of running a Deep Learning architecture to perform inference on a pre-trained model"* | `inference/` — `ghcr.io/ggml-org/llama.cpp:server` serving a **pinned** Qwen3.5-2B Q4_K_M GGUF (repo `unsloth/Qwen3.5-2B-GGUF`, revision `f6d5376…`, sha256 verified at build) | `evidence/bench-cpu.txt` — fixed prompt, 3 runs, **9.08 tokens/s median** (isolated) and **8.84 tokens/s** (through the GUI); raw response bodies included | `./scripts/bench.sh` |
+| 1 | *"a Docker container capable of running a Deep Learning architecture to perform inference on a pre-trained model"* | `inference/` — `ghcr.io/ggml-org/llama.cpp:server` serving a **pinned** Qwen3.5-2B Q4_K_M GGUF (repo `unsloth/Qwen3.5-2B-GGUF`, revision `f6d5376…`, sha256 verified at build) | `evidence/bench-cpu.txt` — fixed prompt, 3 runs, **8.88 tokens/s median** (isolated) and **8.49 tokens/s** (through the GUI); raw response bodies included | `./scripts/bench.sh` |
 | 2 | *"Performing inference (locally and through GUI) within a Docker container"* | one path via the model's own HTTP API, one path browser → `gui` → `inference` | `evidence/bench-cpu.txt` (both paths, medians + per-run numbers), `evidence/completion.txt` | `./scripts/bench.sh`; `./scripts/evidence.sh` |
 | 3 | *"A graphic interface must be used for doing the inference … isolated from the inference using different containers with Docker Compose"* | `gui/` (gradio) is the **only** published port; `inference` has `expose:` and no `ports:` | `evidence/compose-ps.txt` (`0.0.0.0:7860->7860/tcp` on gui, `8080/tcp` on inference) | `docker compose ps` |
 | 4 | *"it will be necessary to encapsulate the inference function in a web server (flask, FastAPI)"* | the llama.cpp server image **already is** an OpenAI-compatible HTTP server, so the inference call is wrapped in a web server without extra code (plan D1) | raw `POST /v1/chat/completions` response in `evidence/bench-cpu.txt`; `evidence/compose-ps.txt` shows the inherited healthcheck passing | `docker compose exec -T inference curl -s http://localhost:8080/v1/models`; `docker compose exec -T inference curl -s http://localhost:8080/health` |
@@ -32,6 +32,10 @@ plan, and this stage claims nothing about them.
 
 ## 2. Numbers at a glance
 
+Run-to-run variance on this shared CPU host is a few percent (two consecutive executions of
+`bench.sh` gave 9.08 / 8.88 tok/s isolated); the numbers below are from the **committed**
+`evidence/bench-cpu.txt`, which the table below quotes, and the artifact is authoritative.
+
 | Measurement | Value | Artifact |
 |---|---|---|
 | `inference` image | 2 117 416 629 B (2.12 GB) | `image-sizes.txt` |
@@ -40,12 +44,12 @@ plan, and this stage claims nothing about them.
 | — its largest layer | 317 MB, the `pip install` layer (68.6 %) | `image-sizes.txt` |
 | base image | `ghcr.io/ggml-org/llama.cpp:server`, 836 580 789 B (837 MB) | `image-sizes.txt` |
 | GUI image without `--no-cache-dir` | 545 290 931 B (545.29 MB) — **+84.1 MB** | `size-experiment.txt` |
-| inference API, isolated (median of 3) | 4.183 s, 38 tokens, **9.08 tok/s** (pooled 9.05) | `bench-cpu.txt` |
-| same prompt via the GUI (median of 3) | 7.467 s, 67 tokens, **8.84 tok/s** (pooled 8.82) | `bench-cpu.txt` |
+| inference API, isolated (median of 3) | 4.280 s, 38 tokens, **8.88 tok/s** (pooled 8.74) | `bench-cpu.txt` |
+| same prompt via the GUI (median of 3) | 8.839 s, 75 tokens, **8.49 tok/s** (pooled 8.64) | `bench-cpu.txt` |
 | rebuild with no changes | every step `CACHED`, 0 instructions executed | `build-cache.txt` A |
 | edit app code | pip layer `CACHED`, `COPY app.py` re-runs | `build-cache.txt` B2 |
 | change `LLAMA_ARG_CTX_SIZE` | 1.28 GB model layer `CACHED` — no re-download | `build-cache.txt` C |
-| gui → inference overhead | ≈ 0.1 s (a GUI run of the same token count lands within ~0.1 s of the API run) | `bench-cpu.txt` |
+| gui → inference overhead | not separable from noise: both paths land in the same 8.0–9.1 tok/s band across runs, so any gradio hop cost sits below the run-to-run variance of a multi-second generation on a shared host | `bench-cpu.txt` |
 
 ## 3. Reproduce everything
 

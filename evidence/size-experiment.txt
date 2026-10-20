@@ -1,7 +1,7 @@
 ======================================================================
 size-experiment.txt — one demonstrated image-size improvement
 ======================================================================
-date            : 2026-10-20T18:54:26+02:00
+date            : 2026-10-20T19:01:45+02:00
 engine / compose: 29.2.1 / 5.0.2
 arch            : aarch64
 
@@ -36,214 +36,37 @@ BUILD B (without --no-cache-dir) — tag aiia-docker/gui:pip-cache-experiment
 #1 transferring dockerfile: 282B done
 #1 DONE 0.0s
 
-#2 [auth] library/python:pull token for registry-1.docker.io
-#2 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/python:3.12-slim
+#2 DONE 0.4s
 
-#3 [internal] load metadata for docker.io/library/python:3.12-slim
-#3 DONE 0.6s
+#3 [internal] load .dockerignore
+#3 transferring context: 64B done
+#3 DONE 0.0s
 
-#4 [internal] load .dockerignore
-#4 transferring context: 64B done
+#4 [1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 #4 DONE 0.0s
 
-#5 [1/5] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+#5 [internal] load build context
+#5 transferring context: 2.18kB done
 #5 DONE 0.0s
 
-#6 [internal] load build context
-#6 transferring context: 2.18kB done
-#6 DONE 0.0s
+#6 [2/5] WORKDIR /app
+#6 CACHED
 
-#7 [2/5] WORKDIR /app
+#7 [3/5] COPY requirements.txt .
 #7 CACHED
 
-#8 [3/5] COPY requirements.txt .
+#8 [4/5] RUN pip install -r requirements.txt
 #8 CACHED
 
-#9 [4/5] RUN pip install -r requirements.txt
-#9 0.962 Collecting gradio==6.30.0 (from -r requirements.txt (line 1))
-#9 1.023   Downloading gradio-6.30.0-py3-none-any.whl.metadata (16 kB)
-#9 1.046 Collecting anyio<5.0,>=3.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.064   Downloading anyio-4.15.1-py3-none-any.whl.metadata (4.7 kB)
-#9 1.090 Collecting brotli>=1.1.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.102   Downloading brotli-1.2.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (6.1 kB)
-#9 1.139 Collecting fastapi<1.0,>=0.115.2 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.150   Downloading fastapi-0.155.0-py3-none-any.whl.metadata (26 kB)
-#9 1.189 Collecting gradio-client==2.7.2 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.201   Downloading gradio_client-2.7.2-py3-none-any.whl.metadata (7.1 kB)
-#9 1.219 Collecting groovy~=0.1 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.231   Downloading groovy-0.1.2-py3-none-any.whl.metadata (6.1 kB)
-#9 1.249 Collecting hf-gradio<1.0,>=0.4.1 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.262   Downloading hf_gradio-0.4.1-py3-none-any.whl.metadata (428 bytes)
-#9 1.282 Collecting httpx<1.0,>=0.24.1 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.294   Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
-#9 1.330 Collecting huggingface-hub<3.0,>=1.16.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.342   Downloading huggingface_hub-2.2.0-py3-none-any.whl.metadata (16 kB)
-#9 1.367 Collecting jinja2<4.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.378   Downloading jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
-#9 1.411 Collecting markupsafe<4.0,>=2.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.423   Downloading markupsafe-3.0.4-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (2.7 kB)
-#9 1.525 Collecting numpy<3.0,>=1.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.560   Downloading numpy-2.5.4-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl.metadata (6.6 kB)
-#9 1.666 Collecting orjson~=3.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.679   Downloading orjson-3.13.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (42 kB)
-#9 1.702 Collecting packaging (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.714   Downloading packaging-26.3-py3-none-any.whl.metadata (3.5 kB)
-#9 1.779 Collecting pandas<4.0,>=1.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.792   Downloading pandas-3.0.6-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl.metadata (79 kB)
-#9 1.884 Collecting pillow<13.0,>=8.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.896   Downloading pillow-12.3.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl.metadata (9.1 kB)
-#9 1.949 Collecting pydantic<=3.0,>=2.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 1.961   Downloading pydantic-2.14.1-py3-none-any.whl.metadata (133 kB)
-#9 1.995 Collecting pydub<1.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.006   Downloading pydub-0.25.1-py2.py3-none-any.whl.metadata (1.4 kB)
-#9 2.026 Collecting python-multipart<1.0,>=0.0.18 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.038   Downloading python_multipart-0.0.32-py3-none-any.whl.metadata (2.1 kB)
-#9 2.067 Collecting pytz>=2017.2 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.078   Downloading pytz-2026.5-py2.py3-none-any.whl.metadata (22 kB)
-#9 2.105 Collecting pyyaml<7.0,>=5.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.116   Downloading pyyaml-6.0.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl.metadata (2.4 kB)
-#9 2.134 Collecting safehttpx<0.2.0,>=0.1.7 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.148   Downloading safehttpx-0.1.7-py3-none-any.whl.metadata (4.2 kB)
-#9 2.169 Collecting semantic-version~=2.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.181   Downloading semantic_version-2.10.0-py2.py3-none-any.whl.metadata (9.7 kB)
-#9 2.209 Collecting starlette<2.0,>=1.0.1 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.220   Downloading starlette-1.9.0-py3-none-any.whl.metadata (6.6 kB)
-#9 2.242 Collecting tomlkit<0.15.0,>=0.12.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.255   Downloading tomlkit-0.14.0-py3-none-any.whl.metadata (2.8 kB)
-#9 2.276 Collecting typer<1.0,>=0.12 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.288   Downloading typer-0.27.3-py3-none-any.whl.metadata (16 kB)
-#9 2.310 Collecting typing-extensions~=4.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.322   Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
-#9 2.348 Collecting uvicorn>=0.14.0 (from gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.359   Downloading uvicorn-0.54.0-py3-none-any.whl.metadata (6.6 kB)
-#9 2.383 Collecting fsspec (from gradio-client==2.7.2->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.395   Downloading fsspec-2026.9.0-py3-none-any.whl.metadata (10 kB)
-#9 2.424 Collecting idna>=2.8 (from anyio<5.0,>=3.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.435   Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
-#9 2.468 Collecting typing-inspection>=0.4.2 (from fastapi<1.0,>=0.115.2->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.480   Downloading typing_inspection-0.4.4-py3-none-any.whl.metadata (2.6 kB)
-#9 2.496 Collecting annotated-doc>=0.0.2 (from fastapi<1.0,>=0.115.2->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.508   Downloading annotated_doc-0.0.5-py3-none-any.whl.metadata (6.5 kB)
-#9 2.527 Collecting opentelemetry-api>=1.44.0 (from fastapi<1.0,>=0.115.2->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.539   Downloading opentelemetry_api-1.45.1-py3-none-any.whl.metadata (1.4 kB)
-#9 2.566 Collecting certifi (from httpx<1.0,>=0.24.1->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.577   Downloading certifi-2026.10.19-py3-none-any.whl.metadata (2.5 kB)
-#9 2.598 Collecting httpcore==1.* (from httpx<1.0,>=0.24.1->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.610   Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
-#9 2.630 Collecting h11>=0.16 (from httpcore==1.*->httpx<1.0,>=0.24.1->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.641   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
-#9 2.677 Collecting click<9.0.0,>=8.4.2 (from huggingface-hub<3.0,>=1.16.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.689   Downloading click-8.5.0-py3-none-any.whl.metadata (2.6 kB)
-#9 2.715 Collecting filelock>=3.10.0 (from huggingface-hub<3.0,>=1.16.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.727   Downloading filelock-4.2.4-py3-none-any.whl.metadata (2.0 kB)
-#9 2.758 Collecting hf-xet<2.0.0,>=1.6.0 (from huggingface-hub<3.0,>=1.16.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.770   Downloading hf_xet-1.7.0-cp38-abi3-manylinux_2_28_aarch64.whl.metadata (4.9 kB)
-#9 2.790 Collecting httpx2<3,>=2.0.0 (from huggingface-hub<3.0,>=1.16.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.802   Downloading httpx2-2.15.1-py3-none-any.whl.metadata (9.6 kB)
-#9 2.831 Collecting tqdm>=4.42.1 (from huggingface-hub<3.0,>=1.16.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.842   Downloading tqdm-4.70.1-py3-none-any.whl.metadata (57 kB)
-#9 2.874 Collecting python-dateutil>=2.8.2 (from pandas<4.0,>=1.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.885   Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
-#9 2.904 Collecting annotated-types>=0.6.0 (from pydantic<=3.0,>=2.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 2.916   Downloading annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
-#9 3.177 Collecting pydantic-core==2.50.1 (from pydantic<=3.0,>=2.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 3.189   Downloading pydantic_core-2.50.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.5 kB)
-#9 3.220 Collecting shellingham>=1.3.0 (from typer<1.0,>=0.12->gradio==6.30.0->-r requirements.txt (line 1))
-#9 3.231   Downloading shellingham-1.5.4-py2.py3-none-any.whl.metadata (3.5 kB)
-#9 3.259 Collecting rich>=13.8.0 (from typer<1.0,>=0.12->gradio==6.30.0->-r requirements.txt (line 1))
-#9 3.271   Downloading rich-15.0.0-py3-none-any.whl.metadata (18 kB)
-#9 3.299 Collecting httpcore2==2.15.1 (from httpx2<3,>=2.0.0->huggingface-hub<3.0,>=1.16.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 3.311   Downloading httpcore2-2.15.1-py3-none-any.whl.metadata (27 kB)
-#9 3.330 Collecting truststore>=0.10 (from httpx2<3,>=2.0.0->huggingface-hub<3.0,>=1.16.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 3.341   Downloading truststore-0.10.5-py3-none-any.whl.metadata (4.5 kB)
-#9 3.366 Collecting six>=1.5 (from python-dateutil>=2.8.2->pandas<4.0,>=1.0->gradio==6.30.0->-r requirements.txt (line 1))
-#9 3.377   Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
-#9 3.399 Collecting markdown-it-py>=2.2.0 (from rich>=13.8.0->typer<1.0,>=0.12->gradio==6.30.0->-r requirements.txt (line 1))
-#9 3.410   Downloading markdown_it_py-4.2.0-py3-none-any.whl.metadata (7.4 kB)
-#9 3.434 Collecting pygments<3.0.0,>=2.13.0 (from rich>=13.8.0->typer<1.0,>=0.12->gradio==6.30.0->-r requirements.txt (line 1))
-#9 3.445   Downloading pygments-2.21.0-py3-none-any.whl.metadata (2.5 kB)
-#9 3.468 Collecting mdurl~=0.1 (from markdown-it-py>=2.2.0->rich>=13.8.0->typer<1.0,>=0.12->gradio==6.30.0->-r requirements.txt (line 1))
-#9 3.480   Downloading mdurl-0.1.2-py3-none-any.whl.metadata (1.6 kB)
-#9 3.499 Downloading gradio-6.30.0-py3-none-any.whl (31.4 MB)
-#9 3.943    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 31.4/31.4 MB 72.1 MB/s eta 0:00:00
-#9 3.957 Downloading gradio_client-2.7.2-py3-none-any.whl (64 kB)
-#9 3.972 Downloading anyio-4.15.1-py3-none-any.whl (132 kB)
-#9 3.990 Downloading brotli-1.2.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (1.5 MB)
-#9 4.022    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.5/1.5 MB 45.7 MB/s eta 0:00:00
-#9 4.034 Downloading fastapi-0.155.0-py3-none-any.whl (146 kB)
-#9 4.049 Downloading groovy-0.1.2-py3-none-any.whl (14 kB)
-#9 4.065 Downloading hf_gradio-0.4.1-py3-none-any.whl (4.5 kB)
-#9 4.081 Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
-#9 4.098 Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
-#9 4.112 Downloading huggingface_hub-2.2.0-py3-none-any.whl (839 kB)
-#9 4.129    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 839.9/839.9 kB 45.6 MB/s eta 0:00:00
-#9 4.141 Downloading jinja2-3.1.6-py3-none-any.whl (134 kB)
-#9 4.156 Downloading markupsafe-3.0.4-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (24 kB)
-#9 4.171 Downloading numpy-2.5.4-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl (15.7 MB)
-#9 4.404    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 15.7/15.7 MB 67.3 MB/s eta 0:00:00
-#9 4.416 Downloading orjson-3.13.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (129 kB)
-#9 4.430 Downloading packaging-26.3-py3-none-any.whl (129 kB)
-#9 4.445 Downloading pandas-3.0.6-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl (10.3 MB)
-#9 4.595    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 10.3/10.3 MB 68.8 MB/s eta 0:00:00
-#9 4.608 Downloading pillow-12.3.0-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl (6.3 MB)
-#9 4.701    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.3/6.3 MB 67.4 MB/s eta 0:00:00
-#9 4.712 Downloading pydantic-2.14.1-py3-none-any.whl (488 kB)
-#9 4.733 Downloading pydantic_core-2.50.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (2.0 MB)
-#9 4.762    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 68.9 MB/s eta 0:00:00
-#9 4.774 Downloading pydub-0.25.1-py2.py3-none-any.whl (32 kB)
-#9 4.788 Downloading python_multipart-0.0.32-py3-none-any.whl (30 kB)
-#9 4.801 Downloading pytz-2026.5-py2.py3-none-any.whl (506 kB)
-#9 4.820 Downloading pyyaml-6.0.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl (775 kB)
-#9 4.831    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 775.1/775.1 kB 71.4 MB/s eta 0:00:00
-#9 4.843 Downloading safehttpx-0.1.7-py3-none-any.whl (9.0 kB)
-#9 4.856 Downloading semantic_version-2.10.0-py2.py3-none-any.whl (15 kB)
-#9 4.870 Downloading starlette-1.9.0-py3-none-any.whl (80 kB)
-#9 4.886 Downloading tomlkit-0.14.0-py3-none-any.whl (39 kB)
-#9 4.900 Downloading typer-0.27.3-py3-none-any.whl (123 kB)
-#9 4.917 Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
-#9 4.930 Downloading uvicorn-0.54.0-py3-none-any.whl (87 kB)
-#9 4.946 Downloading annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)
-#9 4.959 Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
-#9 4.972 Downloading click-8.5.0-py3-none-any.whl (125 kB)
-#9 4.988 Downloading filelock-4.2.4-py3-none-any.whl (162 kB)
-#9 5.003 Downloading fsspec-2026.9.0-py3-none-any.whl (221 kB)
-#9 5.020 Downloading h11-0.16.0-py3-none-any.whl (37 kB)
-#9 5.034 Downloading hf_xet-1.7.0-cp38-abi3-manylinux_2_28_aarch64.whl (4.0 MB)
-#9 5.091    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.0/4.0 MB 71.0 MB/s eta 0:00:00
-#9 5.102 Downloading httpx2-2.15.1-py3-none-any.whl (96 kB)
-#9 5.116 Downloading httpcore2-2.15.1-py3-none-any.whl (85 kB)
-#9 5.129 Downloading idna-3.20-py3-none-any.whl (69 kB)
-#9 5.142 Downloading opentelemetry_api-1.45.1-py3-none-any.whl (60 kB)
-#9 5.156 Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
-#9 5.173 Downloading rich-15.0.0-py3-none-any.whl (310 kB)
-#9 5.190 Downloading shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
-#9 5.204 Downloading tqdm-4.70.1-py3-none-any.whl (80 kB)
-#9 5.218 Downloading typing_inspection-0.4.4-py3-none-any.whl (14 kB)
-#9 5.232 Downloading certifi-2026.10.19-py3-none-any.whl (136 kB)
-#9 5.247 Downloading markdown_it_py-4.2.0-py3-none-any.whl (91 kB)
-#9 5.263 Downloading pygments-2.21.0-py3-none-any.whl (1.3 MB)
-#9 5.280    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.3/1.3 MB 64.8 MB/s eta 0:00:00
-#9 5.292 Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
-#9 5.307 Downloading truststore-0.10.5-py3-none-any.whl (19 kB)
-#9 5.322 Downloading mdurl-0.1.2-py3-none-any.whl (10.0 kB)
-#9 5.455 Installing collected packages: pytz, pydub, brotli, typing-extensions, truststore, tqdm, tomlkit, six, shellingham, semantic-version, pyyaml, python-multipart, pygments, pillow, packaging, orjson, numpy, mdurl, markupsafe, idna, hf-xet, h11, groovy, fsspec, filelock, click, certifi, annotated-types, annotated-doc, uvicorn, typing-inspection, python-dateutil, pydantic-core, opentelemetry-api, markdown-it-py, jinja2, httpcore2, httpcore, anyio, starlette, rich, pydantic, pandas, httpx2, httpx, typer, safehttpx, huggingface-hub, fastapi, gradio-client, hf-gradio, gradio
-#9 10.63 Successfully installed annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.15.1 brotli-1.2.0 certifi-2026.10.19 click-8.5.0 fastapi-0.155.0 filelock-4.2.4 fsspec-2026.9.0 gradio-6.30.0 gradio-client-2.7.2 groovy-0.1.2 h11-0.16.0 hf-gradio-0.4.1 hf-xet-1.7.0 httpcore-1.0.9 httpcore2-2.15.1 httpx-0.28.1 httpx2-2.15.1 huggingface-hub-2.2.0 idna-3.20 jinja2-3.1.6 markdown-it-py-4.2.0 markupsafe-3.0.4 mdurl-0.1.2 numpy-2.5.4 opentelemetry-api-1.45.1 orjson-3.13.0 packaging-26.3 pandas-3.0.6 pillow-12.3.0 pydantic-2.14.1 pydantic-core-2.50.1 pydub-0.25.1 pygments-2.21.0 python-dateutil-2.9.0.post0 python-multipart-0.0.32 pytz-2026.5 pyyaml-6.0.3 rich-15.0.0 safehttpx-0.1.7 semantic-version-2.10.0 shellingham-1.5.4 six-1.17.0 starlette-1.9.0 tomlkit-0.14.0 tqdm-4.70.1 truststore-0.10.5 typer-0.27.3 typing-extensions-4.16.0 typing-inspection-0.4.4 uvicorn-0.54.0
-#9 10.63 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
-#9 10.71 
-#9 10.71 [notice] A new release of pip is available: 25.0.1 -> 26.2.2
-#9 10.71 [notice] To update, run: pip install --upgrade pip
-#9 DONE 10.9s
+#9 [5/5] COPY app.py .
+#9 CACHED
 
-#10 [5/5] COPY app.py .
+#10 exporting to image
+#10 exporting layers done
+#10 writing image sha256:d42362c8d1ff27c1f862dd1c9f7dab49f848b730bc103277452363eebabcbe1e done
+#10 naming to docker.io/aiia-docker/gui:pip-cache-experiment done
 #10 DONE 0.0s
-
-#11 exporting to image
-#11 exporting layers
-#11 exporting layers 1.4s done
-#11 writing image sha256:d42362c8d1ff27c1f862dd1c9f7dab49f848b730bc103277452363eebabcbe1e
-#11 writing image sha256:d42362c8d1ff27c1f862dd1c9f7dab49f848b730bc103277452363eebabcbe1e done
-#11 naming to docker.io/aiia-docker/gui:pip-cache-experiment done
-#11 DONE 1.4s
 
 ======================================================================
 BUILD A (as committed, with --no-cache-dir) — tag aiia-docker/gui:pip-nocache-experiment
@@ -268,10 +91,10 @@ BUILD A (as committed, with --no-cache-dir) — tag aiia-docker/gui:pip-nocache-
 #5 transferring context: 63B done
 #5 DONE 0.0s
 
-#6 [2/5] WORKDIR /app
+#6 [3/5] COPY requirements.txt .
 #6 CACHED
 
-#7 [3/5] COPY requirements.txt .
+#7 [2/5] WORKDIR /app
 #7 CACHED
 
 #8 [4/5] RUN pip install --no-cache-dir -r requirements.txt

@@ -117,7 +117,9 @@ usage block when checked against the isolated call — that is the method `scrip
 uses, and it is the only way to state effective tokens/s for the GUI path without guessing.
 **Notes (stage 2 — measured, CPU-only, Cortex-X925, 20 threads, shared host):** fixed 38-token prompt
 at **9.08 tokens/s** median through the model's own API inside the compose network (median 4.183 s),
-and **8.84 tokens/s** end-to-end through gradio at 67–89 tokens per run. The GUI's elapsed time is
+and **8.84 tokens/s** end-to-end through gradio at 67–89 tokens per run. Re-run during review gave
+8.88 / 8.49 tok/s on the same scripts — a few percent of drift between executions, so the committed
+artifact is the reference and no single figure should be quoted as exact. The GUI's elapsed time is
 longer than the isolated call's, but that is **not** transport overhead — `gui/app.py` samples at
 temperature 0.7 / max_tokens 512 while the probe pins 0 / 160, so it simply generates more tokens;
 tokens/s is the number the two paths can be compared on, which is why the evidence reports both the
