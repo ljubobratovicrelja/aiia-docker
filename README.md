@@ -49,6 +49,35 @@ only from inside the compose network (`http://inference:8080/v1`).
 docker compose down
 ```
 
+## GPU variant (NVIDIA Container Toolkit)
+
+`inference/Dockerfile` builds **two targets out of one shared model stage**: the 1.28 GB pinned
+GGUF is downloaded and sha256-verified once by the `model` stage, and both targets `COPY --from`
+it, so switching between them never re-downloads the model (the second build's model layer reports
+`CACHED`). The CPU target is the file's **last** stage, which is what makes it what a target-less
+build gets — so the command above keeps working exactly as before.
+
+```bash
+docker compose -f compose.yaml -f compose.gpu.yaml up -d --build   # GPU (CUDA 13)
+docker compose -f compose.yaml -f compose.gpu.yaml down
+```
+
+`compose.gpu.yaml` is an **override file**, not a profile: a profile can add a service, but it
+cannot re-parameterise one that already exists, and here the existing `inference` service needs a
+different build target (`gpu`), a different image tag, the device reservation
+(`deploy.resources.reservations.devices: [{driver: nvidia, count: all, capabilities: [gpu]}]`) and
+the offload settings (`LLAMA_ARG_N_GPU_LAYERS=99`, `LLAMA_ARG_FLASH_ATTN=on` — names read off the
+image's own `--help`). The GUI, the isolation and the model are unchanged; the override only
+changes which binary serves them.
+
+On this host (one GB10) it is not decorative: the server loads with `offloaded 25/25 layers to
+GPU`, `CUDA0 model buffer size = 1211.05 MiB`, `nvidia-smi` **inside** the container lists
+`/app/llama-server` holding 1589 MiB, and the same fixed prompt runs at **134.40 tokens/s against
+8.88 on CPU** — 15.14× effective tokens/s. Full logs and the CPU-vs-GPU tables: `evidence/gpu.txt`
+and `evidence/bench-gpu.txt`. The same branch and the same two Compose files also run unchanged on a
+second machine with an **RTX 3090 Ti** — 320.66 tok/s against 10.00 on that host's own CPU (32.07×) —
+see §2.1 of [`docs/EVIDENCE.md`](docs/EVIDENCE.md).
+
 ## Evidence
 
 The graded artifact is the Docker/Compose configuration, so the measurements that back it up live in
@@ -59,17 +88,30 @@ it, in **[`docs/EVIDENCE.md`](docs/EVIDENCE.md)**.
 ```bash
 ./scripts/cache_demo.sh          # layer-cache proof      -> evidence/build-cache.txt
 ./scripts/bench.sh               # CPU tokens/s + latency -> evidence/bench-cpu.txt
+./scripts/bench_gpu.sh           # GPU tokens/s + CPU-vs-GPU table -> evidence/bench-gpu.txt
+./scripts/gpu_evidence.sh        # device request, nvidia-smi inside, CUDA init + offload, stats
 ./scripts/image-sizes.sh         # image sizes + layers   -> evidence/image-sizes.txt
 ./scripts/size-experiment.sh     # demonstrated size win  -> evidence/size-experiment.txt
 ./scripts/evidence.sh            # stack health, isolation, one end-to-end completion
 ```
 
-Headline numbers (CPU-only, fixed prompt, 3 runs each): **9.08 tokens/s** median through the model's
-own API inside the compose network and **8.84 tokens/s** end-to-end through the published gradio
-port; `inference` 2.12 GB and `gui` 461 MB, with the 1.28 GB model layer staying `CACHED` when only a
-runtime setting changes.
+Headline numbers (fixed prompt, 3 runs each): **8.88 tokens/s** median on CPU through the model's own
+API inside the compose network and **8.49 tokens/s** end-to-end through the published gradio port;
+on the GPU variant the same prompt runs at **134.40** (isolated) and **132.62** (through the GUI)
+tokens/s. `inference` 2.12 GB CPU / 5.68 GB GPU, `gui` 461 MB, with the 1.28 GB model layer staying
+`CACHED` when only a runtime setting changes. The GPU answer is *not* byte-identical to the CPU one,
+and not even to its own previous one: at `temperature 0` the CPU stack emitted 38 completion tokens
+on every run, while the GPU emitted 77 on all six committed runs after an earlier execution had
+emitted 59 on all three of its runs. `scripts/bench_gpu.sh` therefore runs the measurement **twice**
+and keeps both executions, and every comparison is made on effective tokens/s with the token counts
+quoted beside it — see the caveats in `docs/EVIDENCE.md`.
 
 ## Status
+
+Stage 3 (GPU variant and CPU-vs-GPU profiling) adds the `cpu`/`gpu` build targets over one shared
+model stage, [`compose.gpu.yaml`](compose.gpu.yaml), `scripts/bench_gpu.sh`,
+`scripts/gpu_evidence.sh` and the artifacts `evidence/gpu.txt` + `evidence/bench-gpu.txt`. The CPU
+path is untouched and still the default.
 
 Stage 2 (craft demonstration and measured CPU evidence) adds the evidence scripts and artifacts above
 and [`docs/EVIDENCE.md`](docs/EVIDENCE.md); it changes no application behaviour.

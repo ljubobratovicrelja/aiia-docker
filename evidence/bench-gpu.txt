@@ -1,0 +1,723 @@
+======================================================================
+bench-gpu.txt — fixed-prompt throughput on GPU (aiia-docker stage 3)
+======================================================================
+date          : 2026-10-20T19:37:20+02:00
+host          : aarch64, 29.2.1 engine, 5.0.2 compose
+cpu           : Cortex-X925  (20 threads)
+gpu           : NVIDIA GB10, 580.159.03
+gpu device    : GPU 0: NVIDIA GB10 (UUID: GPU-d2a4f42e-dcee-b92f-3529-f8f153ef6f3f)
+image         : aiia-docker/inference:stage-3-gpu
+compose files : compose.yaml + compose.gpu.yaml (override: build.target gpu, device reservation, offload env)
+runs per path : 3
+prompt        : Write a Python function that returns the nth Fibonacci number. Include only the code and one short comment.
+
+This is the same prompt and the same request body as evidence/bench-cpu.txt:
+  temperature 0, max_tokens 160, chat_template_kwargs {enable_thinking: false}
+Same host, same pinned model revision and sha256 — the only differences are
+the build target, the nvidia device reservation and the GPU offload settings.
+
+Thinking-model note: the pinned Qwen3.5-2B GGUF is a reasoning model.
+Both requests send {"chat_template_kwargs":{"enable_thinking":false}}
+plus a max_tokens cap; without them the reply lands in reasoning_content
+at thousands of tokens and the client times out.
+
+Path notes:
+  inference — reached only from inside the compose network via
+              'docker compose -f compose.yaml -f compose.gpu.yaml exec -T
+              inference curl'; inference has no 'ports:' mapping, on the
+              GPU override either.  Probe pins temperature 0 and
+              max_tokens 160, so runs are deterministic and token counts
+              comparable across runs and across the two hosts.
+  gui       — the published gradio HTTP API, unchanged by this stage.
+              gui/app.py samples at its own temperature 0.7 / max_tokens
+              512, so run lengths differ; effective tokens/s is the
+              comparable metric.  gui tokens are counted by posting the
+              returned text to llama-server's own /tokenize.
+
+Executions: 2 consecutive executions of 3 runs per path.
+The GPU is deterministic WITHIN an execution but not across them: the same
+request at temperature 0 has been observed to emit one completion-token
+count on every run of one execution and a different one on every run of
+the next, so the completion-token count is treated as part of the
+measurement (quoted next to every number) rather than as a constant
+divided into elapsed time.  The stable quantity is effective tokens/s.
+Every execution is kept in this artifact so the spread is visible instead
+of averaged away.
+
+Comparison against evidence/bench-cpu.txt is appended below by
+scripts/bench_compare.py, once per execution and once pooled.
+
+======================================================================
+
+################################################################################
+### EXECUTION 1 of 2
+################################################################################
+
+######################################################################
+# PATH: inference — 3 runs (GPU, execution 1)
+######################################################################
+
+---------- inference run 1/3 (GPU) ----------
+started 1: 2026-10-20T19:37:20+02:00
+--- raw response (inference) ---
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```python\ndef fib(n):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```"
+      }
+    }
+  ],
+  "created": 1792517840,
+  "model": "aiia-local",
+  "system_fingerprint": "b11749-1d88cb05f",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 77,
+    "prompt_tokens": 32,
+    "total_tokens": 109,
+    "prompt_tokens_details": {
+      "cached_tokens": 28
+    }
+  },
+  "id": "chatcmpl-yXc2CEBQJXdtFl4Y9fyQGu8wrRBmTXmc",
+  "timings": {
+    "cache_n": 28,
+    "prompt_n": 4,
+    "prompt_ms": 10.908,
+    "prompt_per_token_ms": 2.727,
+    "prompt_per_second": 366.70333700036673,
+    "predicted_n": 77,
+    "predicted_ms": 531.584,
+    "predicted_per_token_ms": 6.994526315789473,
+    "predicted_per_second": 142.96893811702387
+  }
+}
+--- completion text ---
+```python
+def fib(n):
+    """Return the nth Fibonacci number (0-indexed)."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+```
+--- measured ---
+inference   elapsed 0.555 s | completion_tokens 77 | 138.77 tokens/s
+__SUMMARY__ {"mode": "inference", "elapsed_s": 0.555, "completion_tokens": 77, "tokens_per_s": 138.77}
+
+---------- inference run 2/3 (GPU) ----------
+started 2: 2026-10-20T19:37:20+02:00
+--- raw response (inference) ---
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```python\ndef fib(n):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```"
+      }
+    }
+  ],
+  "created": 1792517841,
+  "model": "aiia-local",
+  "system_fingerprint": "b11749-1d88cb05f",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 77,
+    "prompt_tokens": 32,
+    "total_tokens": 109,
+    "prompt_tokens_details": {
+      "cached_tokens": 28
+    }
+  },
+  "id": "chatcmpl-oaKQD21762wGSCHa9aatx6uVQtra6v3q",
+  "timings": {
+    "cache_n": 28,
+    "prompt_n": 4,
+    "prompt_ms": 10.014,
+    "prompt_per_token_ms": 2.5035,
+    "prompt_per_second": 399.4407829039345,
+    "predicted_n": 77,
+    "predicted_ms": 530.47,
+    "predicted_per_token_ms": 6.979868421052632,
+    "predicted_per_second": 143.26917639074782
+  }
+}
+--- completion text ---
+```python
+def fib(n):
+    """Return the nth Fibonacci number (0-indexed)."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+```
+--- measured ---
+inference   elapsed 0.543 s | completion_tokens 77 | 141.88 tokens/s
+__SUMMARY__ {"mode": "inference", "elapsed_s": 0.543, "completion_tokens": 77, "tokens_per_s": 141.88}
+
+---------- inference run 3/3 (GPU) ----------
+started 3: 2026-10-20T19:37:21+02:00
+--- raw response (inference) ---
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```python\ndef fib(n):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```"
+      }
+    }
+  ],
+  "created": 1792517842,
+  "model": "aiia-local",
+  "system_fingerprint": "b11749-1d88cb05f",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 77,
+    "prompt_tokens": 32,
+    "total_tokens": 109,
+    "prompt_tokens_details": {
+      "cached_tokens": 28
+    }
+  },
+  "id": "chatcmpl-rwAKxkTaDwjGEMxGTaoWOAtuZUarWEpo",
+  "timings": {
+    "cache_n": 28,
+    "prompt_n": 4,
+    "prompt_ms": 10.455,
+    "prompt_per_token_ms": 2.61375,
+    "prompt_per_second": 382.59206121472977,
+    "predicted_n": 77,
+    "predicted_ms": 569.364,
+    "predicted_per_token_ms": 7.491631578947369,
+    "predicted_per_second": 133.48227144673706
+  }
+}
+--- completion text ---
+```python
+def fib(n):
+    """Return the nth Fibonacci number (0-indexed)."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+```
+--- measured ---
+inference   elapsed 0.583 s | completion_tokens 77 | 132.17 tokens/s
+__SUMMARY__ {"mode": "inference", "elapsed_s": 0.583, "completion_tokens": 77, "tokens_per_s": 132.17}
+
+######################################################################
+# PATH: gui — 3 runs (GPU, execution 1)
+######################################################################
+
+---------- gui run 1/3 (GPU) ----------
+started 1: 2026-10-20T19:37:22+02:00
+--- raw response (gui) ---
+event: complete
+data: ["```python\ndef nth_fib(n):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    return fib(n)\n```", null]
+
+
+--- completion text ---
+```python
+def nth_fib(n):
+    """Return the nth Fibonacci number (0-indexed)."""
+    return fib(n)
+```
+--- measured ---
+gui         elapsed 0.242 s | completion_tokens 31 | 128.00 tokens/s
+__SUMMARY__ {"mode": "gui", "elapsed_s": 0.242, "completion_tokens": 31, "tokens_per_s": 128.0}
+
+---------- gui run 2/3 (GPU) ----------
+started 2: 2026-10-20T19:37:22+02:00
+--- raw response (gui) ---
+event: complete
+data: ["```python\ndef fib(n):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    return n\n```", null]
+
+
+--- completion text ---
+```python
+def fib(n):
+    """Return the nth Fibonacci number (0-indexed)."""
+    return n
+```
+--- measured ---
+gui         elapsed 0.210 s | completion_tokens 27 | 128.39 tokens/s
+__SUMMARY__ {"mode": "gui", "elapsed_s": 0.21, "completion_tokens": 27, "tokens_per_s": 128.39}
+
+---------- gui run 3/3 (GPU) ----------
+started 3: 2026-10-20T19:37:23+02:00
+--- raw response (gui) ---
+event: complete
+data: ["```python\ndef fib(n):\n    if n < 0: raise ValueError(\"n must be non-negative\")\n    if n <= 1: return n\n    a, b = 0, 1\n    for _ in range(2, n + 1):\n        a, b = b, a + b\n    return b\n```", null]
+
+
+--- completion text ---
+```python
+def fib(n):
+    if n < 0: raise ValueError("n must be non-negative")
+    if n <= 1: return n
+    a, b = 0, 1
+    for _ in range(2, n + 1):
+        a, b = b, a + b
+    return b
+```
+--- measured ---
+gui         elapsed 0.541 s | completion_tokens 76 | 140.44 tokens/s
+__SUMMARY__ {"mode": "gui", "elapsed_s": 0.541, "completion_tokens": 76, "tokens_per_s": 140.44}
+
+--- execution 1 summary ---
+
+==============================================================================
+SUMMARY — fixed prompt, 3 inference + 3 gui runs
+==============================================================================
+path        run    elapsed_s   comp_tok     tokens/s
+inference   1          0.555         77       138.77
+inference   2          0.543         77       141.88
+inference   3          0.583         77       132.17
+gui         1          0.242         31       128.00
+gui         2          0.210         27       128.39
+gui         3          0.541         76       140.44
+------------------------------------------------------------------------------
+median across runs (tokens/s = median of the per-run effective rates;
+pooled = total completion tokens / total elapsed):
+inference        0.555         77       138.77   pooled 137.42 tok/s
+gui              0.242         31       128.39   pooled 134.94 tok/s
+
+gui - inference median elapsed: -0.313 s.  Not a like-for-like latency
+difference: this probe pins temperature 0 / max_tokens 160 on the
+isolated call, while gui/app.py samples at its own temperature 0.7 /
+max_tokens 512 — so the gui run generates more tokens.  Effective
+tokens/s is the comparable number; the elapsed delta is mostly extra
+generation, not gradio overhead.
+
+--- execution 1 vs CPU ---
+
+==============================================================================
+CPU vs GPU — same fixed prompt, same request parameters
+==============================================================================
+cpu artifact : evidence/bench-cpu.txt
+gpu artifact : evidence/bench-gpu.txt (execution 1 only)
+
+path       dev   elapsed_s   tokens    tokens/s pooled tok/s
+------------------------------------------------------------------------------
+inference  cpu       4.280       38        8.88        8.74
+gui        cpu       8.839       75        8.49        8.64
+inference  gpu       0.555       77      138.77      137.42
+gui        gpu       0.242       31      128.39      134.94
+------------------------------------------------------------------------------
+medians across each artifact's runs; tokens = median completion tokens
+
+path inference:
+  DIFFERENT completion token counts — cpu [38] vs gpu [77] — so the two rows generated
+  different work.  The comparable number is the RATE: GPU 138.77 vs CPU 8.88 tokens/s
+  = 15.63x the tokens per second, and 7.2 ms/token vs 112.6 ms/token.
+  Raw elapsed (7.71x) is NOT quoted as the headline: the GPU run emitted more tokens,
+  so its wall clock carries extra work — if anything that makes the rate advantage
+  a floor rather than an overstatement.  Note also that a different token count at
+  temperature 0 means the two backends did not produce the same text: the greedy
+  trajectory diverges between the CPU and CUDA kernels.  That is a finding about
+  the backends, not a measurement error, and it is why the two paths are compared
+  on effective tokens/s.
+
+path gui:
+  DIFFERENT completion token counts — cpu [31, 75, 84] vs gpu [27, 31, 76] — so the two rows generated
+  different work.  The comparable number is the RATE: GPU 128.39 vs CPU 8.49 tokens/s
+  = 15.12x the tokens per second, and 7.8 ms/token vs 117.8 ms/token.
+  Raw elapsed (36.52x) is NOT quoted as the headline: the GPU run emitted more tokens,
+  so its wall clock carries extra work — if anything that makes the rate advantage
+  a floor rather than an overstatement.  Note also that a different token count at
+  temperature 0 means the two backends did not produce the same text: the greedy
+  trajectory diverges between the CPU and CUDA kernels.  That is a finding about
+  the backends, not a measurement error, and it is why the two paths are compared
+  on effective tokens/s.
+
+
+################################################################################
+### EXECUTION 2 of 2
+################################################################################
+
+######################################################################
+# PATH: inference — 3 runs (GPU, execution 2)
+######################################################################
+
+---------- inference run 1/3 (GPU) ----------
+started 1: 2026-10-20T19:37:23+02:00
+--- raw response (inference) ---
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```python\ndef fib(n):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```"
+      }
+    }
+  ],
+  "created": 1792517844,
+  "model": "aiia-local",
+  "system_fingerprint": "b11749-1d88cb05f",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 77,
+    "prompt_tokens": 32,
+    "total_tokens": 109,
+    "prompt_tokens_details": {
+      "cached_tokens": 28
+    }
+  },
+  "id": "chatcmpl-eumihb5qfum4FIE86lxHebOVnS817G2z",
+  "timings": {
+    "cache_n": 28,
+    "prompt_n": 4,
+    "prompt_ms": 10.054,
+    "prompt_per_token_ms": 2.5135,
+    "prompt_per_second": 397.8516013526954,
+    "predicted_n": 77,
+    "predicted_ms": 560.074,
+    "predicted_per_token_ms": 7.369394736842104,
+    "predicted_per_second": 135.69635441031008
+  }
+}
+--- completion text ---
+```python
+def fib(n):
+    """Return the nth Fibonacci number (0-indexed)."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+```
+--- measured ---
+inference   elapsed 0.583 s | completion_tokens 77 | 132.17 tokens/s
+__SUMMARY__ {"mode": "inference", "elapsed_s": 0.583, "completion_tokens": 77, "tokens_per_s": 132.17}
+
+---------- inference run 2/3 (GPU) ----------
+started 2: 2026-10-20T19:37:24+02:00
+--- raw response (inference) ---
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```python\ndef fib(n):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```"
+      }
+    }
+  ],
+  "created": 1792517845,
+  "model": "aiia-local",
+  "system_fingerprint": "b11749-1d88cb05f",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 77,
+    "prompt_tokens": 32,
+    "total_tokens": 109,
+    "prompt_tokens_details": {
+      "cached_tokens": 28
+    }
+  },
+  "id": "chatcmpl-jfnxswBjsNGZfJGpkZ3tGduNiWWn1AKZ",
+  "timings": {
+    "cache_n": 28,
+    "prompt_n": 4,
+    "prompt_ms": 10.154,
+    "prompt_per_token_ms": 2.5385,
+    "prompt_per_second": 393.9334252511326,
+    "predicted_n": 77,
+    "predicted_ms": 562.705,
+    "predicted_per_token_ms": 7.404013157894737,
+    "predicted_per_second": 135.06188855617063
+  }
+}
+--- completion text ---
+```python
+def fib(n):
+    """Return the nth Fibonacci number (0-indexed)."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+```
+--- measured ---
+inference   elapsed 0.575 s | completion_tokens 77 | 133.93 tokens/s
+__SUMMARY__ {"mode": "inference", "elapsed_s": 0.575, "completion_tokens": 77, "tokens_per_s": 133.93}
+
+---------- inference run 3/3 (GPU) ----------
+started 3: 2026-10-20T19:37:25+02:00
+--- raw response (inference) ---
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```python\ndef fib(n):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```"
+      }
+    }
+  ],
+  "created": 1792517845,
+  "model": "aiia-local",
+  "system_fingerprint": "b11749-1d88cb05f",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 77,
+    "prompt_tokens": 32,
+    "total_tokens": 109,
+    "prompt_tokens_details": {
+      "cached_tokens": 28
+    }
+  },
+  "id": "chatcmpl-6SFCCvwmSncOfzS7NfIBE1ZRS15EHXBP",
+  "timings": {
+    "cache_n": 28,
+    "prompt_n": 4,
+    "prompt_ms": 10.171,
+    "prompt_per_token_ms": 2.54275,
+    "prompt_per_second": 393.2749975420313,
+    "predicted_n": 77,
+    "predicted_ms": 558.439,
+    "predicted_per_token_ms": 7.347881578947368,
+    "predicted_per_second": 136.0936467546142
+  }
+}
+--- completion text ---
+```python
+def fib(n):
+    """Return the nth Fibonacci number (0-indexed)."""
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+```
+--- measured ---
+inference   elapsed 0.571 s | completion_tokens 77 | 134.87 tokens/s
+__SUMMARY__ {"mode": "inference", "elapsed_s": 0.571, "completion_tokens": 77, "tokens_per_s": 134.87}
+
+######################################################################
+# PATH: gui — 3 runs (GPU, execution 2)
+######################################################################
+
+---------- gui run 1/3 (GPU) ----------
+started 1: 2026-10-20T19:37:25+02:00
+--- raw response (gui) ---
+event: complete
+data: ["```python\ndef fibonacci(n):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return b\n```", null]
+
+
+--- completion text ---
+```python
+def fibonacci(n):
+    """Return the nth Fibonacci number (0-indexed)."""
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return b
+```
+--- measured ---
+gui         elapsed 0.432 s | completion_tokens 57 | 131.98 tokens/s
+__SUMMARY__ {"mode": "gui", "elapsed_s": 0.432, "completion_tokens": 57, "tokens_per_s": 131.98}
+
+---------- gui run 2/3 (GPU) ----------
+started 2: 2026-10-20T19:37:26+02:00
+--- raw response (gui) ---
+event: complete
+data: ["```python\ndef fibonacci(n):\n    if n <= 0:\n        return 0\n    elif n == 1:\n        return 1\n    a, b = 0, 1\n    for _ in range(2, n + 1):\n        a, b = b, a + b\n    return b\n```", null]
+
+
+--- completion text ---
+```python
+def fibonacci(n):
+    if n <= 0:
+        return 0
+    elif n == 1:
+        return 1
+    a, b = 0, 1
+    for _ in range(2, n + 1):
+        a, b = b, a + b
+    return b
+```
+--- measured ---
+gui         elapsed 0.553 s | completion_tokens 75 | 135.65 tokens/s
+__SUMMARY__ {"mode": "gui", "elapsed_s": 0.553, "completion_tokens": 75, "tokens_per_s": 135.65}
+
+---------- gui run 3/3 (GPU) ----------
+started 3: 2026-10-20T19:37:27+02:00
+--- raw response (gui) ---
+event: complete
+data: ["```python\ndef nth_fib(n):\n    \"\"\"Returns the nth Fibonacci number using an iterative approach.\"\"\"\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```", null]
+
+
+--- completion text ---
+```python
+def nth_fib(n):
+    """Returns the nth Fibonacci number using an iterative approach."""
+    a, b = 0, 1
+    for _ in range(n):
+        a, b = b, a + b
+    return a
+```
+--- measured ---
+gui         elapsed 0.435 s | completion_tokens 58 | 133.25 tokens/s
+__SUMMARY__ {"mode": "gui", "elapsed_s": 0.435, "completion_tokens": 58, "tokens_per_s": 133.25}
+
+--- execution 2 summary ---
+
+==============================================================================
+SUMMARY — fixed prompt, 3 inference + 3 gui runs
+==============================================================================
+path        run    elapsed_s   comp_tok     tokens/s
+inference   1          0.583         77       132.17
+inference   2          0.575         77       133.93
+inference   3          0.571         77       134.87
+gui         1          0.432         57       131.98
+gui         2          0.553         75       135.65
+gui         3          0.435         58       133.25
+------------------------------------------------------------------------------
+median across runs (tokens/s = median of the per-run effective rates;
+pooled = total completion tokens / total elapsed):
+inference        0.575         77       133.93   pooled 133.60 tok/s
+gui              0.435         58       133.25   pooled 133.80 tok/s
+
+gui - inference median elapsed: -0.140 s.  Not a like-for-like latency
+difference: this probe pins temperature 0 / max_tokens 160 on the
+isolated call, while gui/app.py samples at its own temperature 0.7 /
+max_tokens 512 — so the gui run generates more tokens.  Effective
+tokens/s is the comparable number; the elapsed delta is mostly extra
+generation, not gradio overhead.
+
+--- execution 2 vs CPU ---
+
+==============================================================================
+CPU vs GPU — same fixed prompt, same request parameters
+==============================================================================
+cpu artifact : evidence/bench-cpu.txt
+gpu artifact : evidence/bench-gpu.txt (execution 2 only)
+
+path       dev   elapsed_s   tokens    tokens/s pooled tok/s
+------------------------------------------------------------------------------
+inference  cpu       4.280       38        8.88        8.74
+gui        cpu       8.839       75        8.49        8.64
+inference  gpu       0.575       77      133.93      133.60
+gui        gpu       0.435       58      133.25      133.80
+------------------------------------------------------------------------------
+medians across each artifact's runs; tokens = median completion tokens
+
+path inference:
+  DIFFERENT completion token counts — cpu [38] vs gpu [77] — so the two rows generated
+  different work.  The comparable number is the RATE: GPU 133.93 vs CPU 8.88 tokens/s
+  = 15.08x the tokens per second, and 7.5 ms/token vs 112.6 ms/token.
+  Raw elapsed (7.44x) is NOT quoted as the headline: the GPU run emitted more tokens,
+  so its wall clock carries extra work — if anything that makes the rate advantage
+  a floor rather than an overstatement.  Note also that a different token count at
+  temperature 0 means the two backends did not produce the same text: the greedy
+  trajectory diverges between the CPU and CUDA kernels.  That is a finding about
+  the backends, not a measurement error, and it is why the two paths are compared
+  on effective tokens/s.
+
+path gui:
+  DIFFERENT completion token counts — cpu [31, 75, 84] vs gpu [57, 58, 75] — so the two rows generated
+  different work.  The comparable number is the RATE: GPU 133.25 vs CPU 8.49 tokens/s
+  = 15.69x the tokens per second, and 7.5 ms/token vs 117.8 ms/token.
+  Raw elapsed (20.32x) is NOT quoted as the headline: the GPU run emitted more tokens,
+  so its wall clock carries extra work — if anything that makes the rate advantage
+  a floor rather than an overstatement.  Note also that a different token count at
+  temperature 0 means the two backends did not produce the same text: the greedy
+  trajectory diverges between the CPU and CUDA kernels.  That is a finding about
+  the backends, not a measurement error, and it is why the two paths are compared
+  on effective tokens/s.
+
+
+################################################################################
+### POOLED — all 2 executions, 3 runs per path each
+################################################################################
+
+==============================================================================
+SUMMARY — fixed prompt, 6 inference + 6 gui runs
+==============================================================================
+path        run    elapsed_s   comp_tok     tokens/s
+inference   1          0.555         77       138.77
+inference   2          0.543         77       141.88
+inference   3          0.583         77       132.17
+inference   4          0.583         77       132.17
+inference   5          0.575         77       133.93
+inference   6          0.571         77       134.87
+gui         1          0.242         31       128.00
+gui         2          0.210         27       128.39
+gui         3          0.541         76       140.44
+gui         4          0.432         57       131.98
+gui         5          0.553         75       135.65
+gui         6          0.435         58       133.25
+------------------------------------------------------------------------------
+median across runs (tokens/s = median of the per-run effective rates;
+pooled = total completion tokens / total elapsed):
+inference        0.573         77       134.40   pooled 135.48 tok/s
+gui              0.433         57       132.62   pooled 134.27 tok/s
+
+gui - inference median elapsed: -0.139 s.  Not a like-for-like latency
+difference: this probe pins temperature 0 / max_tokens 160 on the
+isolated call, while gui/app.py samples at its own temperature 0.7 /
+max_tokens 512 — so the gui run generates more tokens.  Effective
+tokens/s is the comparable number; the elapsed delta is mostly extra
+generation, not gradio overhead.
+
+==============================================================================
+CPU vs GPU — same fixed prompt, same request parameters
+==============================================================================
+cpu artifact : evidence/bench-cpu.txt
+gpu artifact : evidence/bench-gpu.txt (all 2 executions pooled)
+
+path       dev   elapsed_s   tokens    tokens/s pooled tok/s
+------------------------------------------------------------------------------
+inference  cpu       4.280       38        8.88        8.74
+gui        cpu       8.839       75        8.49        8.64
+inference  gpu       0.573       77      134.40      135.48
+gui        gpu       0.433       57      132.62      134.27
+------------------------------------------------------------------------------
+medians across each artifact's runs; tokens = median completion tokens
+
+path inference:
+  DIFFERENT completion token counts — cpu [38] vs gpu [77] — so the two rows generated
+  different work.  The comparable number is the RATE: GPU 134.40 vs CPU 8.88 tokens/s
+  = 15.14x the tokens per second, and 7.4 ms/token vs 112.6 ms/token.
+  Raw elapsed (7.47x) is NOT quoted as the headline: the GPU run emitted more tokens,
+  so its wall clock carries extra work — if anything that makes the rate advantage
+  a floor rather than an overstatement.  Note also that a different token count at
+  temperature 0 means the two backends did not produce the same text: the greedy
+  trajectory diverges between the CPU and CUDA kernels.  That is a finding about
+  the backends, not a measurement error, and it is why the two paths are compared
+  on effective tokens/s.
+
+path gui:
+  DIFFERENT completion token counts — cpu [31, 75, 84] vs gpu [27, 31, 57, 58, 75, 76] — so the two rows generated
+  different work.  The comparable number is the RATE: GPU 132.62 vs CPU 8.49 tokens/s
+  = 15.62x the tokens per second, and 7.5 ms/token vs 117.8 ms/token.
+  Raw elapsed (20.39x) is NOT quoted as the headline: the GPU run emitted more tokens,
+  so its wall clock carries extra work — if anything that makes the rate advantage
+  a floor rather than an overstatement.  Note also that a different token count at
+  temperature 0 means the two backends did not produce the same text: the greedy
+  trajectory diverges between the CPU and CUDA kernels.  That is a finding about
+  the backends, not a measurement error, and it is why the two paths are compared
+  on effective tokens/s.
+
