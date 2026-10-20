@@ -1,8 +1,8 @@
 """Stage 1 GUI — the only published entry point.
 
-Gradio chat UI that forwards each message to the inference container's
-OpenAI-compatible endpoint. Pure stdlib for the HTTP call, so the only
-dependency is gradio itself.
+Gradio chat UI that forwards the conversation to the inference container's
+OpenAI-compatible endpoint. The HTTP call is stdlib, so gradio is the only
+dependency.
 """
 
 import json
@@ -15,15 +15,34 @@ API_URL = os.getenv("API_URL", "http://inference:8080/v1")
 MODEL_ALIAS = os.getenv("MODEL_ALIAS", "aiia-local")
 
 
+def _as_messages(history):
+    """Normalise gradio's history into the API's message list.
+
+    Gradio has passed history as [user, assistant] pairs and as message dicts
+    across versions; accept both so a gradio bump does not silently drop the
+    conversation.
+    """
+    messages = []
+    for turn in history:
+        if isinstance(turn, dict):
+            messages.append({"role": turn.get("role"), "content": turn.get("content")})
+        else:
+            messages.append({"role": "user", "content": turn[0]})
+            if turn[1]:
+                messages.append({"role": "assistant", "content": turn[1]})
+    return messages
+
+
 def chat(message, history):
-    messages = [{"role": "user", "content": message}]
+    messages = _as_messages(history)
+    messages.append({"role": "user", "content": message})
     payload = json.dumps(
         {
             "model": MODEL_ALIAS,
             "messages": messages,
             "temperature": 0.7,
             "max_tokens": 512,
-            # Qwen3.5 is a thinking model: left on, it spends its whole budget
+            # Qwen3.5 is a thinking model: left on, it spends the whole budget
             # on reasoning_content and never fills `content`.
             "chat_template_kwargs": {"enable_thinking": False},
         }

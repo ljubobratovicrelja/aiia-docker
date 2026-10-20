@@ -1,5 +1,5 @@
 == docker stats --no-stream ==
 CONTAINER ID   NAME                      CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O      PIDS
-d7b2c019e73b   aiia-docker-gui-1         1.32%     113.5MiB / 119.6GiB   0.09%     34.1kB / 62kB     0B / 8.19kB    23
-9389c3731c65   aiia-docker-inference-1   0.00%     1.771GiB / 4GiB       44.29%    21.2kB / 17.9kB   7.6MB / 0B     43
-44a9104492d5   open-webui                0.18%     1.018GiB / 119.6GiB   0.85%     1.63MB / 2.35kB   594MB / 50MB   68
+b12f9923a802   aiia-docker-gui-1         1.27%     113.2MiB / 512MiB     22.10%    38kB / 114kB      0B / 0B        23
+771537fb03a6   aiia-docker-inference-1   0.00%     1.441GiB / 4GiB       36.02%    13.1kB / 2.57kB   0B / 0B        43
+44a9104492d5   open-webui                0.15%     1.018GiB / 119.6GiB   0.85%     1.63MB / 2.35kB   594MB / 50MB   68

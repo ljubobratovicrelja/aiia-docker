@@ -51,5 +51,7 @@ docker compose down
 
 ## Status
 
-Pre-development: skeleton and plan only. See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md).
-Work log and findings: [`JOURNAL.md`](JOURNAL.md).
+Stage 1 (CPU two-container baseline) is implemented and running: llama-server serves a pinned
+Qwen3.5-2B GGUF in one container, a gradio UI in a second, the two wired by `compose.yaml` with the
+inference port reachable only inside the compose network. See [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md)
+for the staged plan; work log and findings in [`JOURNAL.md`](JOURNAL.md).

@@ -81,7 +81,7 @@ Each phase ends with something executable that proves it, not with "it should wo
 | Phase | Deliverable | Exit criterion (the proof) |
 |---|---|---|
 | **P0** ✅ | Skeleton, plan, brief embedded | This document committed and pushed |
-| **P1** | CPU two-container baseline: `inference/` + `gui/`, `compose.yaml` | `docker compose up` → a prompt typed in the browser returns a completion, and `docker compose ps` shows inference with no published port |
+| **P1** ✅ | CPU two-container baseline: `inference/` + `gui/`, `compose.yaml` | Verified: a prompt through the **GUI container's HTTP API** returns a completion generated inside the inference container; `PortBindings` on inference is `null` while the GUI is published on 7860; limits/shm/read-only/user applied to **both** services |
 | **P2** | Dockerfile / Compose craft pass | cache-layer demo (touch app code → rebuild → model layer `CACHED`), non-root `USER`, read-only rootfs where it holds, limits in effect (`docker inspect` shows them) |
 | **P3** | GPU profile (`server-cuda13` + device reservation) | `docker compose --profile gpu up` serves, and tok/s CPU vs GPU measured on the same prompt |
 | **P4** | LoRA training stage | adapter file produced, loss curve recorded, base vs adapter outputs on a fixed prompt set captured |

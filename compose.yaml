@@ -2,8 +2,9 @@ name: aiia-docker
 
 services:
   # Container 1 — the model + its OpenAI-compatible HTTP server.
-  # The port is exposed to the compose network only: no `ports:` mapping,
-  # so this service is unreachable from outside the stack.
+  # The port is exposed to the compose network only: no `ports:` mapping, so
+  # this service is unreachable from outside the stack. That is the isolation
+  # the brief asks for, and it is verified, not asserted (empty PortBindings).
   inference:
     build:
       context: ./inference
@@ -21,6 +22,9 @@ services:
           cpus: "4.0"
           memory: 4g
     restart: unless-stopped
+    # No healthcheck block: the base image ships its own
+    # (curl -f http://localhost:8080/health), and `service_healthy` below is
+    # driven by that inherited check.
 
   # Container 2 — the only published entry point.
   gui:
@@ -32,6 +36,17 @@ services:
     environment:
       API_URL: http://inference:8080/v1
       MODEL_ALIAS: aiia-local
+      GRADIO_TEMP_DIR: /tmp/gradio
+      HOME: /tmp
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    user: "65534:65534"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
     depends_on:
       inference:
         condition: service_healthy
