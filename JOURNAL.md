@@ -38,6 +38,20 @@ and loaded against the same one. `all-linear` is the wrong instrument here: it w
 vision tower and it silently skips names that do not match, so the target list is explicit. QLoRA is
 discouraged on this family; on the GB10, neither `causal_conv1d` nor `fla` has a build, so GDN runs
 on the slow PyTorch reference (acceptable at this scale).
+**Findings (risk R5 — HF Spaces are not free):** creating a Docker or Gradio Space on a personal
+account needs a **paid plan (PRO, ~$9/month)**; the free tier only allows Gradio Spaces on ZeroGPU,
+which is PyTorch-oriented and does not fit a llama.cpp server. A Docker Space is also a single
+container with a single exposed port, so it cannot reproduce the two-container split. The brief
+lists "upload to HF Spaces + online API inference" as a max-grade item, so this is a real
+correction to the plan's assumptions rather than a detail.
+**Findings (risk R6 — Compose keys, verified on the engine):** `deploy.resources.limits` **does**
+take effect under plain `docker compose up` (Engine 29.2.1 / Compose v5.0.2), so the service-level
+`mem_limit`/`cpus` shorthand is unnecessary and declaring both invites drift. `expose:` with no
+`ports:` was confirmed to leave `PortBindings` empty — that is the isolation requirement made real.
+**Findings (risk R4 — corpus):** Magicoder-OSS-Instruct-75K is the pick (MIT, 75,197 rows, ~194 MiB,
+`problem`/`solution`); CodeAlpaca-20k (7.7 MiB) is the light fallback but its `output` is not always
+code. Measured evidence will be two numbers: `ast.parse` adherence and pass@1 on a 50-problem
+HumanEval slice (~5–8 min on a 2B Q4).
 **Findings (risk R2 — llama.cpp LoRA path):** inference and runtime adapter loading both work for
 `qwen35`, and every Qwen3.5 projection — GDN included — is routed through `build_lora_mm`. The trap
 is on the conversion side: `convert_lora_to_gguf.py` raises `NotImplementedError` in the V-head
