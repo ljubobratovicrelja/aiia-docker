@@ -1,0 +1,61 @@
+# Compose OVERRIDE for the GPU variant of the inference service — stage 3.
+#
+# Why an override file and not a profile: a Compose profile can *add* services,
+# but it cannot re-parameterise a service that already exists in compose.yaml.
+# The GPU variant needs different values for an existing service (a different
+# build target, a different image tag, a device reservation, extra env), so the
+# supported mechanism is a second `-f` file whose keys merge over the first.
+#
+# Bring the GPU stack up with BOTH files, in this order:
+#
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
+#
+# The plain `docker compose up -d` (compose.yaml alone) keeps building and
+# running the CPU target exactly as in stages 1-2 — that is verified, not
+# assumed: `docker compose config` on compose.yaml alone still resolves
+# target-less build, tag `aiia-docker/inference:stage-1` and no device request.
+#
+# The isolation design is untouched: `inference` still has `expose:` and no
+# `ports:`, the GUI is still the only published entry point, and nothing about
+# the gui service changes here.
+
+name: aiia-docker
+
+services:
+  inference:
+    # `target: gpu` selects the CUDA target of inference/Dockerfile.  Its model
+    # layer is `COPY --from` the same shared `model` stage the cpu target uses,
+    # so switching between the two targets never re-downloads the 1.28 GB GGUF.
+    build:
+      context: ./inference
+      target: gpu
+    image: aiia-docker/inference:stage-3-gpu
+
+    # The NVIDIA Container Toolkit request.  This is the canonical Compose
+    # syntax (verified on Engine 29.2.1 / Compose v5.0.2, project plan R6) and
+    # it is what `docker inspect` below shows Compose resolved into a
+    # DeviceRequests entry.  `count: all` rather than `count: 1` because the
+    # DGX Spark exposes a single GB10 and asking for "all" survives a machine
+    # with more than one.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    # GPU offload settings.  Both names were read off the image's own `--help`,
+    # not guessed.  A whole-model offload (99 layers, i.e. more than the model
+    # has, which llama.cpp clamps to the real count) keeps the CPU out of the
+    # matmuls; the CPU-side numbers to compare against are in bench-cpu.txt.
+    # The inherited limits (4 CPU / 4 GiB) still apply — Compose merges maps.
+    environment:
+      LLAMA_ARG_N_GPU_LAYERS: "99"
+      LLAMA_ARG_FLASH_ATTN: "on"
+      # Build 11749 of the CUDA image logs very little at the default verbosity,
+      # and the CUDA device discovery / layer-offload accounting is exactly what
+      # proves the GPU is doing the work, so it is turned up here.  Verified
+      # name: `LLAMA_ARG_LOG_VERBOSITY` (-lv / --verbosity), from the image's own
+      # `--help`.
+      LLAMA_ARG_LOG_VERBOSITY: "5"

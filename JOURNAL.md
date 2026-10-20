@@ -137,3 +137,81 @@ search can silently become a different fact, and the report has to be reproducib
 The brief's "train a model for a few epochs" is the only item that requires real ML work;
 everything else in the grading list is Dockerfile and Compose craft. Timing: 4 days to the 25 Oct
 00:00 cut-off, and the report is capped at 6 pages *including* code.
+
+**Finding (stage 3 — a Compose profile cannot re-parameterise an existing service):** the plan said
+the GPU variant would be a `profiles: ["gpu"]` entry. That is wrong for this case and the note in
+§6.1 R6 is corrected: a profile decides whether a service is *started*; it cannot change the build
+target, the image tag or add a device reservation to a service that `compose.yaml` already defines
+(the merge that would be needed does not exist). The mechanism that does work is a second file —
+`compose.gpu.yaml`, applied with `-f compose.yaml -f compose.gpu.yaml`, whose keys merge over the
+first. Profiles stay in the plan for P4, where the training stage is a *new* service and profiles
+are exactly right.
+
+**Finding (stage 3 — a target-less Docker build builds the LAST stage, and it bit us):** the
+Dockerfile was first written as `model` → `cpu` → `gpu`. With no `--target`, BuildKit builds the
+final stage, so plain `docker compose build` — the default path that must keep behaving as in
+stages 1–2 — quietly produced the **4.4 GB CUDA image** while still tagging it `:stage-1`. Nothing
+failed; the mistake was visible only by comparing image sizes (5.68 GB vs the expected 2.12 GB).
+The fix is to make `cpu` the last stage and say so in the file. General lesson: **"X is the default
+build" is a property of stage order, not of a comment or a name** — verify it by size or digest,
+never by reading the Dockerfile.
+
+**Finding (stage 3 — the CUDA image's server logs at debug verbosity, and loads the model twice):**
+`server-cuda13` (build 11749) starts with `verbosity = 5`; one startup plus twelve benchmark requests
+produced **60 014 log lines**. Worse for evidence work, it loads the model **twice**: first a
+`no_alloc` probe that `--fit` uses to size the request, then the real load. The probe's block prints
+`CUDA0 model buffer size = 0.00 MiB` and `offloaded 25/25 layers to GPU` — i.e. if you grep the log
+and take the *first* match, you conclude the model is fully offloaded and yet resident nowhere.
+The real load's block is the second one: 1211.05 MiB in `CUDA0`. The capture step in
+`scripts/gpu_evidence.sh` therefore cuts the log at the last `initializing ...` line and greps only
+the current boot — the first version grepped the whole history, which reports whichever restart
+happened to be last and mixes two boots' buffer sizes into one block.
+
+**Finding (stage 3 — the GB10 reports no VRAM counters, so "how much VRAM" needs two sources):**
+`nvidia-smi` on this host prints `Not Supported` for `Memory-Usage` and `[N/A]` for
+`memory.total/used`, because the GPU shares the 128 GB unified pool with the CPU — the usual
+"check VRAM before and after" method simply does not exist here. The per-process column does work,
+and that is the number used: `/app/llama-server` → **1589 MiB**. llama.cpp's own accounting agrees
+in shape: `CUDA0` model 1211.05 MiB + KV 48.00 + recurrent 77.06 + compute 56.02 ≈ 1392 MiB, which
+matches its own `projected to use 1392 MiB of device memory`. Measured, not assumed. Note also that
+this committed memory does **not** show up in `docker stats`: the container reports ~1 GiB of RSS
+against its 4 GiB limit while holding 1.6 GB on the device, because the unified-memory allocation is
+the driver's, not the cgroup's — so `docker stats` is not a superset of GPU usage on this machine.
+
+**Finding (stage 3 — at temperature 0 the GPU is not reproducible even against itself):** the
+isolated probe pins temperature 0 and max_tokens 160, so it was expected to be deterministic *and
+identical* across backends. It is deterministic **within** an execution but not across them. The CPU
+stack emitted 38 completion tokens on every run of every execution. The GPU emitted **59** on all
+three runs of one execution, then **77** on all three runs of the next three executions — same
+prompt, same request body, same container, same image, no configuration change in between. Greedy
+decoding is only greedy if the arithmetic is bit-identical, and CPU vs CUDA (with flash-attention on
+the GPU side) is not; a near-tie flips, the trajectory diverges, and the completion stops at a
+different place. **This changed the shape of the benchmark:** the completion-token count is part of
+the measurement, not a constant to divide into elapsed time, so `scripts/bench_gpu.sh` now runs the
+whole measurement **twice** (`EXECUTIONS=2`) and keeps both executions in the artifact, every
+comparison is made on **effective tokens/s** with the token count printed beside it, and
+`bench_compare.py` refuses to print a speedup factor at all when the counts disagree. Measured on
+the committed pair: 138.77 tok/s (execution 1) and 133.93 tok/s (execution 2) isolated, i.e. 15.63×
+and 15.08× over the CPU's 8.88; 15.12× and 15.69× through the GUI. What looks stable is the **rate**
+(~134–139 tok/s isolated, within ~4 % between executions) and the **ratio** (~15.1–15.6×), not the
+answer. A raw wall-clock speedup would have been flattering (7.47× isolated, 20.39× GUI) and wrong.
+"Same prompt, same answer on both backends" is not a property this stack has; "same prompt, roughly
+the same rate" is — and that is the only claim the numbers support.
+
+**Notes (stage 3 — measured, GB10):** the 1.28 GB GGUF is downloaded once by the shared `model`
+stage; the second target's build is a pure cache hit (`model 2/2 RUN … CACHED`, `COPY --from`
+0.0–0.5 s). Splitting the download into its own stage cost **nothing** in image size: the CPU image
+is byte-for-byte its stage-2 size, 2 117 416 629 B — the extra `COPY --from` layer carries only
+metadata. The GPU image is 5 684 548 299 B, of which the CUDA 13 base is 4.40 GB. Engine detail:
+`count: all` in `deploy.resources.reservations.devices` resolves to `DeviceRequests[0].Count = -1`,
+not to a count — expected once seen, but it is what the `docker inspect` output shows and it looks
+like a bug until you know.
+
+**Finding (stage 3 — a wrong backtick escape wrote wrong text into an evidence artifact):** the
+first draft of `gpu_evidence.sh` had ``echo "--- plain\` docker compose build …\` (cpu target) ---"``
+inside a redirection block. Doubled backslashes do **not** protect a backtick in a double-quoted
+string, so bash ran the inner text as a command substitution: the artifact printed
+`--- plain\ (cpu target) ---` and two `no such service: \` errors went to the build log. It was
+visible only by reading the generated artifact, not the script. General lesson: when a script
+*writes* an artifact, read the artifact — a syntax mistake in a generator is silent in a way it
+never is in a program.
