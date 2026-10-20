@@ -98,9 +98,9 @@ we will build on.
 | R1 | Can `peft` LoRA a Qwen3.5-2B (hybrid Mamba/attention, GDN layers)? Which module names must `target_modules` cover? | Decides whether the "train a few epochs" clause is a small job or a research project | **answered — §6.1** |
 | R2 | Does llama.cpp serve a Qwen3.5 GGUF, and can it load a LoRA adapter for that architecture? Can `convert_lora_to_gguf.py` convert a peft LoRA of it? | Decides whether the adapter is served (D7 as written) or the training stays a separate documented stage | **answered — §6.1** |
 | R3 | What is the exact CUDA-PyTorch install route on aarch64 / GB10 (index, version, wheel availability), and is a CUDA base image needed for the `training` container? | Sizes the training environment work and pins the training container's `FROM` | pending |
-| R4 | Dataset facts (exact repo, revision, row count, license, on-disk size) for the corpus candidates, and which objective metric fits the 6-page budget | Removes "which dataset / how do we show it worked" from the critical path | pending |
-| R5 | Can a Hugging Face Space host this model, with which SDK and hardware tier, at what cost — and what are the exact publish steps? | The second max-grade bullet; if it is not free in practice, we drop it deliberately rather than discover it late | pending |
-| R6 | Which of the run parameters we intend to use are actually supported by the Docker/Compose version installed here, and what is the correct syntax for each? | The YAML is a graded artifact; it must be valid on this engine, not aspirational | pending |
+| R4 | Dataset facts (exact repo, revision, row count, license, on-disk size) for the corpus candidates, and which objective metric fits the 6-page budget | Removes "which dataset / how do we show it worked" from the critical path | **answered — §6.1** |
+| R5 | Can a Hugging Face Space host this model, with which SDK and hardware tier, at what cost — and what are the exact publish steps? | The second max-grade bullet; if it is not free in practice, we drop it deliberately rather than discover it late | **answered — §6.1** |
+| R6 | Which of the run parameters we intend to use are actually supported by the Docker/Compose version installed here, and what is the correct syntax for each? | The YAML is a graded artifact; it must be valid on this engine, not aspirational | **answered — §6.1** |
 
 **Constraint (not an investigation):** the report is capped at **6 pages including the code**, so the
 number of optional items we attempt is bounded by the page budget, not by ambition.
@@ -157,6 +157,59 @@ number of optional items we attempt is bounded by the page budget, not by ambiti
 - Separate serving risk worth carrying: upstream issue **#26916**, Qwen3.5 hybrid failing to load
   with `blk.N.attn_norm.weight` not found (MTP-layer loading), workaround `--no-mtp`.
 
+**R4 — corpus and metric: decided.**
+
+- **Corpus: `ise-uiuc/Magicoder-OSS-Instruct-75K`**, revision `5f839b1f368a76b161028bb9edff055db34022b2`,
+  MIT, 75,197 train rows, ~194 MiB, columns `problem` / `solution` (plus `lang`, `seed`).
+  `load_dataset("ise-uiuc/Magicoder-OSS-Instruct-75K", split="train[:3000]")`.
+- Fallback: `sahil2801/CodeAlpaca-20k` (cc-by-4.0, 20,022 rows, ~7.7 MiB, one JSON file,
+  `instruction` / `input` / `output`) — trivial to load, but some `output` values are prose rather
+  than code, so it supports a weaker claim. Not chosen: `Magicoder-Evol-Instruct-110K`
+  (apache-2.0, 111,183 rows, 243 MiB) and `nvidia/OpenCodeInstruct` (cc-by-4.0, 6.4 GiB, 5M rows
+  claimed) — both waste bandwidth for a few-thousand-sample run.
+- **Two metrics, both cheap and both reported for base and adapter:**
+  1. *Instruction adherence* — the share of generated answers whose extracted code block passes
+     `ast.parse`. No execution, no sandbox, and it is the number that actually moves.
+  2. *pass@1 on a 50-problem slice of HumanEval* (`openai/openai_humaneval`, `split="test"`,
+     164 problems) — greedy, `max_tokens≈256`, run the problem's own test harness in a subprocess
+     with a timeout. ~5–8 minutes for 50 problems on a 2B Q4; the full set is 20–30 minutes.
+- Carried uncertainty: OpenCodeInstruct's 5M row count is README-sourced (the datasets server has
+  indexed 1.4M); the runtime figures are projections, to be measured on the real GPU.
+
+**R5 — HF Space: available, but not the cheap bullet it looks like.**
+
+- Creating a **Docker** Space on a personal account **requires a paid plan (PRO, ~$9/month)**; the
+  free tier covers only Gradio Spaces on ZeroGPU, which is a PyTorch-oriented path and does not fit
+  a llama.cpp server. Cheapest paid GPU tier is T4-small at **$0.40/hr**.
+- A Docker Space is **one container with one exposed port** (`app_port`), so the two-container
+  GUI/inference split cannot be reproduced there. It would be a *second, reduced* deployment.
+- Space disk is 50 GB and non-persistent: a 1–2 GB GGUF is either committed to the Space repo
+  (re-checked out on every build) or pulled at runtime and lost on restart.
+- Work if we do it: ~2–4 hours — obtain or convert a GGUF, single-container Space, `app_port: 8080`
+  with `--host 0.0.0.0`, build wait.
+- **Conclusion: skip unless a PRO plan is already in hand** (O3). It is one line of the report, not
+  an evening plus a subscription.
+
+**R6 — the Compose keys that actually take effect on this engine.**
+
+Verified by running each against Docker Engine 29.2.1 / Compose v5.0.2 (non-swarm `docker compose up`):
+
+| Intent | Key to use |
+|---|---|
+| CPU / memory limits | `deploy.resources.limits.cpus` + `.memory` — canonical and effective here; the service-level `cpus`/`mem_limit` shorthand also works, so declare it in one place only |
+| Shared memory | `shm_size: "128m"` |
+| Read-only root + writable scratch | `read_only: true` with `tmpfs: ["/tmp:size=64m,mode=1777"]` |
+| Non-root | `user: "65534:65534"` |
+| Healthcheck gating | `healthcheck.test: ["CMD", …]` and `depends_on: {inference: {condition: service_healthy}}` |
+| GPU | `deploy.resources.reservations.devices: [{driver: nvidia, count: all, capabilities: [gpu]}]` — canonical; `gpus: all` is equivalent but needs Compose ≥ 2.30 |
+| Optional GPU service | `profiles: ["gpu"]`, activated with `docker compose --profile gpu up` |
+| Model storage | top-level `volumes:` plus `services.<name>.volumes: ["models:/models"]` |
+| Internal-only port | `expose: ["8080"]` **and no `ports:`** — verified as empty `PortBindings` |
+
+Not verified: a differential cgroup test of `deploy` limits against the shorthand, and whether a
+container actually gets working CUDA — no GPU workload was run. That last one is P3's exit criterion.
+
+
 ## 7. Evidence to collect (the report is built from this, not the reverse)
 
 - `docker compose ps` / `up` output showing the healthcheck gating the GUI start;
@@ -170,8 +223,8 @@ number of optional items we attempt is bounded by the page budget, not by ambiti
 | # | Question | Default taken |
 |---|---|---|
 | O1 | Qwen3.5-2B vs a Qwen3-1.7B-class model | **`Qwen3.5-2B-Base`, text-only** (§6.1 R1) |
-| O2 | Corpus slice | decided by R4 |
-| O3 | HF Space | **yes** (second max-grade bullet), contingent on R5 |
+| O2 | Corpus slice | **Magicoder-OSS-Instruct-75K, `train[:3000]`** (§6.1 R4); CodeAlpaca-20k if a lighter run is wanted |
+| O3 | HF Space | **skip** — a Docker Space needs PRO (~$9/mo) and is single-container (§6.1 R5); revisit only if a PRO plan already exists |
 | O4 | Adapter served, or training kept as a separate stage | **adapter served** if the llama.cpp converter fix is applied; else merged model (§6.1 R2) |
 | O5 | GPU: compose profile or the only target | profile, so the CPU-first portability claim survives |
 
@@ -196,7 +249,12 @@ points at the same thing.
 | Transformers Qwen3.5 model doc (text-only load path) | https://huggingface.co/docs/transformers/en/model_doc/qwen3_5 |
 | Axolotl Qwen3.5 fine-tune guide (LoRA target modules for GDN) | https://docs.axolotl.ai/docs/models/qwen3.5.html |
 | llama.cpp LoRA converter fix for linear-attn `out_proj` — PR #28324 (issue #21125) | https://github.com/ggml-org/llama.cpp/pull/28324 |
-| HF Spaces | https://huggingface.co/docs/hub/spaces |
+| HF Spaces overview (hardware, limits, plan requirement) | https://huggingface.co/docs/hub/spaces-overview |
+| HF Spaces — Docker SDK and `app_port` | https://huggingface.co/docs/hub/spaces-sdks-docker |
+| HF Spaces — Gradio SDK and ZeroGPU | https://huggingface.co/docs/hub/spaces-sdks-gradio |
+| HF pricing (tiers, PRO, GPU rates) | https://huggingface.co/pricing |
+| HF datasets-server API (rows, splits, sizes) | https://datasets-server.huggingface.co/ |
+| Eval set — HumanEval | https://huggingface.co/datasets/openai/openai_humaneval |
 | Compose specification | https://docs.docker.com/reference/compose-file/ |
 | GPU access in Compose | https://docs.docker.com/reference/compose-file/services/#gpus |
 | Base image (CPU) | `ghcr.io/ggml-org/llama.cpp:server` |
