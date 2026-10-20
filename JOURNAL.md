@@ -29,8 +29,11 @@ development, as the review checkpoint.
 `Qwen3_5ForCausalLM` onto its qwen conversion path, so a Qwen3.5 GGUF is reachable with the
 existing tooling — but whether LoRA *adapters* work on a hybrid Mamba/attention model is an open
 question, not an assumption; it is being verified before the training phase is planned in
-detail. Recorded in `docs/PROJECT_PLAN.md` §7 as the main technical risk.
+detail. Recorded in `docs/PROJECT_PLAN.md` §6 as risk R1.
 **Duties / To-do:** Awaiting Relja's green light on this plan before any development.
-**Notes:** The brief's "train a model for a few epochs" is the only item that requires real ML
-work; everything else in the grading list is Dockerfile and Compose craft. Timing: 4 days to the
-25 Oct 00:00 cut-off, and the report is capped at 6 pages *including* code.
+**Notes:** The plan carries a **pinned-sources table** (model card, corpora, llama.cpp docs, Compose
+spec) and the rule that documents in this repo cite those and only those — a fact re-derived by
+search can silently become a different fact, and the report has to be reproducible.
+The brief's "train a model for a few epochs" is the only item that requires real ML work;
+everything else in the grading list is Dockerfile and Compose craft. Timing: 4 days to the 25 Oct
+00:00 cut-off, and the report is capped at 6 pages *including* code.
