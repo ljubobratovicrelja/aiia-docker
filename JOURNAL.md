@@ -30,6 +30,21 @@ development, as the review checkpoint.
 existing tooling — but whether LoRA *adapters* work on a hybrid Mamba/attention model is an open
 question, not an assumption; it is being verified before the training phase is planned in
 detail. Recorded in `docs/PROJECT_PLAN.md` §6 as risk R1.
+**Findings (risk R1 — LoRA on the hybrid arch):** `Qwen/Qwen3.5-2B` is a composite VLM checkpoint
+(`Qwen3_5ForConditionalGeneration`, vision tensors included); the SFT base is
+`Qwen/Qwen3.5-2B-Base` loaded text-only as `Qwen3_5ForCausalLM`, and the two layouts use different
+weight prefixes (`model.language_model.layers.*` vs `model.layers.*`) — an adapter must be trained
+and loaded against the same one. `all-linear` is the wrong instrument here: it would reach into the
+vision tower and it silently skips names that do not match, so the target list is explicit. QLoRA is
+discouraged on this family; on the GB10, neither `causal_conv1d` nor `fla` has a build, so GDN runs
+on the slow PyTorch reference (acceptable at this scale).
+**Findings (risk R2 — llama.cpp LoRA path):** inference and runtime adapter loading both work for
+`qwen35`, and every Qwen3.5 projection — GDN included — is routed through `build_lora_mm`. The trap
+is on the conversion side: `convert_lora_to_gguf.py` raises `NotImplementedError` in the V-head
+reorder branch for any adapter targeting `linear_attn.out_proj` (upstream #21125, fixed by #28324,
+merged 2026-09-30, absent from the local checkout at HEAD 2026-08-27). Base weights are stored in a
+V-head-reordered layout different from HF's, so a mis-reordered adapter multiplies the wrong
+weights rather than failing loudly. Non-matmul SSM params can never be LoRA targets.
 **Duties / To-do:** Awaiting Relja's green light on this plan before any development.
 **Notes:** The plan carries a **pinned-sources table** (model card, corpora, llama.cpp docs, Compose
 spec) and the rule that documents in this repo cite those and only those — a fact re-derived by
