@@ -1,0 +1,46 @@
+======================================================================
+gpu.txt — GPU variant on a second host (aiia-docker stage 3)
+======================================================================
+date            : 2026-10-20T19:57:03+02:00
+host            : x86_64, 29.9.1 engine, 5.6.0 compose
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04
+container image : aiia-docker/inference:stage-3-gpu
+
+Same compose.yaml + compose.gpu.yaml, same pinned model (revision + sha256
+unchanged), same scripts as the DGX Spark run.  This file records only what
+proves the device was really used; throughput is in evidence/bench-gpu.txt.
+
+--- HostConfig.DeviceRequests (as the runtime received it) ---
+[
+    {
+        "Driver": "nvidia",
+        "Count": -1,
+        "DeviceIDs": null,
+        "Capabilities": [
+            [
+                "gpu"
+            ]
+        ],
+        "Options": null
+    }
+]
+--- PortBindings (inference still unpublished) ---
+{"8080/tcp":null}
+
+--- nvidia-smi INSIDE the inference container ---
+name, memory.total [MiB], memory.used [MiB]
+NVIDIA GeForce RTX 3090 Ti, 24564 MiB, 2191 MiB
+--- device as the server enumerates it ---
+GPU 0: NVIDIA GeForce RTX 3090 Ti (UUID: GPU-a15b708c-1353-958f-99e6-cdb60d9b53e2)
+
+--- llama-server startup: model load and offload ---
+0.00.481.717 I load_tensors:        CUDA0 model buffer size =     0.00 MiB
+0.00.481.717 I load_tensors:    CUDA_Host model buffer size =     0.00 MiB
+0.00.518.975 I common_params_fit_impl: projected to use 1392 MiB of device memory vs. 23259 MiB of free device memory
+0.00.752.329 I load_tensors: offloaded 25/25 layers to GPU
+0.00.752.331 I load_tensors:   CPU_Mapped model buffer size =   397.85 MiB
+0.00.752.332 I load_tensors:        CUDA0 model buffer size =  1211.05 MiB
+
+--- docker stats (inference row) ---
+aiia-docker-inference-1  795.9MiB / 4GiB  0.03%

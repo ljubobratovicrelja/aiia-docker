@@ -25,6 +25,7 @@ Usage:
 """
 
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -32,6 +33,12 @@ import time
 import urllib.request
 
 REPO = __file__.rsplit("/scripts/", 1)[0]
+# Extra `-f <file>` arguments for every `docker compose` call, space-separated.
+# The stage-3 GPU stack is an *override file* rather than a profile, so adding
+# compose.gpu.yaml changes the image, the build target and the device
+# reservation behind the same service name — the probe itself needs no other
+# change to measure the GPU path.  Empty (the default) measures the CPU stack.
+COMPOSE_FILES = os.environ.get("COMPOSE_FILES", "").split()
 GUI_URL = "http://localhost:7860"
 INFER_URL = "http://localhost:8080/v1/chat/completions"
 TOKENIZE_URL = "http://localhost:8080/tokenize"
@@ -44,9 +51,11 @@ SEP = "__HTTP_META__"
 
 
 def compose(*args, **kw):
-    """Run `docker compose ...` from the repo root."""
+    """Run `docker compose ...` from the repo root, with any -f overrides."""
+    files = [x for f in COMPOSE_FILES for x in ("-f", f)]
     return subprocess.run(
-        ["docker", "compose", *args], cwd=REPO, capture_output=True, text=True, **kw
+        ["docker", "compose", *files, *args],
+        cwd=REPO, capture_output=True, text=True, **kw
     )
 
 

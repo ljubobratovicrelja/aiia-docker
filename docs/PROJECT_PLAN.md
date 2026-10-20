@@ -35,7 +35,7 @@ adapter, so that one stack covers both the base assignment and the optional trai
 | Detail of run parameters | memory/cpu limits, shm size, read-only rootfs, non-root, healthcheck gating, GPU reservation | `compose.yaml` |
 | Compose structure for GUI → local API | `gui` starts only once `inference` is healthy; inference port not published | `compose.yaml` |
 | **Optional:** train a model for a few epochs | LoRA fine-tune of the served model on code-instruction data | `training/` |
-| **Max grade:** NVIDIA Container Toolkit + training/inference on GPU | `server-cuda13` build target + device reservation (GPU already available on the host) | `compose.yaml` (gpu profile) |
+| **Max grade:** NVIDIA Container Toolkit + training/inference on GPU | `server-cuda13` build target behind a Compose **override file** (a profile cannot re-parameterise an existing service), one shared model stage so the GGUF is fetched once, device reservation + offload env | `compose.gpu.yaml` + `inference/Dockerfile` |
 | **Max grade:** Hugging Face Spaces + online API inference | Space publishing the same small model | `spaces/` or `gui/` |
 | **Max grade:** other improvements | cache-layer demonstration, image size work, healthcheck-driven startup, model pinning + sha256 | evidence + report |
 
@@ -83,7 +83,7 @@ Each phase ends with something executable that proves it, not with "it should wo
 | **P0** ✅ | Skeleton, plan, brief embedded | This document committed and pushed |
 | **P1** ✅ | CPU two-container baseline: `inference/` + `gui/`, `compose.yaml` | Verified: a prompt through the **GUI container's HTTP API** returns a completion generated inside the inference container; `PortBindings` on inference is `null` while the GUI is published on 7860; limits/shm/read-only/user applied to **both** services |
 | **P2** | Craft demonstration and measured CPU evidence | build-cache proof (touch app code → dependency layer `CACHED`; change a runtime setting → the 1.3 GB model layer `CACHED`), image size and layer breakdown including one demonstrated size improvement, tokens/s and end-to-end latency for a fixed prompt on CPU, `docs/EVIDENCE.md` mapping every graded criterion to the artifact that proves it and the command that regenerates it |
-| **P3** | GPU profile (`server-cuda13` + device reservation) | `docker compose --profile gpu up` serves, and tok/s CPU vs GPU measured on the same prompt |
+| **P3** ✅ | GPU build target + Compose override file, and CPU-vs-GPU numbers | Verified: `inference/Dockerfile` builds a `cpu` target (the default — it is the file's last stage) and a `gpu` target (`server-cuda13`) out of **one shared model stage**, so switching targets never re-downloads the 1.28 GB GGUF (the second build's model layer is `CACHED`); `compose.gpu.yaml` is an **override file** — not a profile: a profile can add a service but cannot re-parameterise an existing one — setting `build.target: gpu`, a distinct image tag, `deploy.resources.reservations.devices` and the offload env; the running container holds a real device request (`HostConfig.DeviceRequests`) and offloads **25/25 layers to GPU** (`CUDA0 model buffer size = 1211.05 MiB`, 1589 MiB per `nvidia-smi` **inside** the container); same fixed prompt, same request body: **134.40 tok/s GPU vs 8.88 CPU** (15.14× effective tokens/s; pooled 135.48 vs 8.74, and 15.63× then 15.08× in the two executions kept in the artifact); plain `docker compose up -d --build` still builds and runs the CPU target unchanged |
 | **P4** | LoRA training stage | adapter file produced, loss curve recorded, base vs adapter outputs on a fixed prompt set captured |
 | **P5** | HF Space | public Space URL answering a request |
 | **P6** | Report (≤6 pp) | **not started — awaiting Relja's call** |
@@ -236,12 +236,20 @@ Verified by running each against Docker Engine 29.2.1 / Compose v5.0.2 (non-swar
 | Non-root | `user: "65534:65534"` |
 | Healthcheck gating | `healthcheck.test: ["CMD", …]` and `depends_on: {inference: {condition: service_healthy}}` |
 | GPU | `deploy.resources.reservations.devices: [{driver: nvidia, count: all, capabilities: [gpu]}]` — canonical; `gpus: all` is equivalent but needs Compose ≥ 2.30 |
-| Optional GPU service | `profiles: ["gpu"]`, activated with `docker compose --profile gpu up` |
+| GPU variant of an *existing* service | **`-f compose.yaml -f compose.gpu.yaml`** (an override file). Correction to an earlier line of this plan: `profiles: ["gpu"]` does **not** work for this — a profile controls whether a service is *started*, and cannot re-parameterise a service that `compose.yaml` already defines. Profiles remain the right tool for adding a *new* service (P4's `training`) |
 | Model storage | top-level `volumes:` plus `services.<name>.volumes: ["models:/models"]` |
 | Internal-only port | `expose: ["8080"]` **and no `ports:`** — verified as empty `PortBindings` |
 
-Not verified: a differential cgroup test of `deploy` limits against the shorthand, and whether a
-container actually gets working CUDA — no GPU workload was run. That last one is P3's exit criterion.
+Not verified: a differential cgroup test of `deploy` limits against the shorthand.
+
+**Closed by P3:** a container does get working CUDA. The official `server-cuda13` image resolves
+the GB10 for real (`CUDA0: NVIDIA GB10`), the device reservation arrives as
+`HostConfig.DeviceRequests = [{Driver: nvidia, Count: -1, Capabilities: [[gpu]]}]`, the server
+offloads 25/25 layers, and `nvidia-smi` run *inside* the container lists `/app/llama-server` as a
+GPU process. Two engine-level details found on the way: `count: all` resolves to `Count: -1`
+(not a count), and the GB10's unified memory makes `nvidia-smi` report `N/A` for total/used VRAM
+while the per-process column still works — that column, plus llama.cpp's own buffer accounting, is
+where a VRAM number has to come from on this machine.
 
 
 ## 7. Evidence to collect (the report is built from this, not the reverse)
@@ -260,7 +268,7 @@ container actually gets working CUDA — no GPU workload was run. That last one 
 | O2 | Corpus slice | **Magicoder-OSS-Instruct-75K, `train[:3000]`** (§6.1 R4); CodeAlpaca-20k if a lighter run is wanted |
 | O3 | HF Space | **yes, via the free route** — Gradio Space on ZeroGPU serving the fine-tuned model through its own API (§6.1 R5). A Docker Space would need PRO and is not required by the spec |
 | O4 | Adapter served, or training kept as a separate stage | **adapter served** if the llama.cpp converter fix is applied; else merged model (§6.1 R2) |
-| O5 | GPU: compose profile or the only target | profile, so the CPU-first portability claim survives |
+| O5 | GPU: how the variant is selected | **resolved by P3**: an override file (`compose.gpu.yaml`) rather than a profile — the CPU path stays the default build and the CPU-first portability claim survives, while the GPU variant still reuses the same service, model layer and GUI |
 
 ## 9. Pinned sources
 
