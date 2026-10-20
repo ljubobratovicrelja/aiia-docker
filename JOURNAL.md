@@ -271,6 +271,24 @@ resolving a hub kernel at run time. And peft writes the adapter in **fp32**: 62 
 across 10 target-module names (**15 630 336** trainable parameters, 0.82 % of 1.897 B) — not the
 ~30 MB the plan predicted, which is the number that matters for what the adapter costs to ship.
 
+**Findings (P4 — the full run, measured):** 374 optimizer steps (2 epochs × 187) in **1801 s** on the
+3090 Ti — 4.76 s/step, 2071.6 padded tokens/s median, flat for the whole run. Loss **0.4070 → 0.3359**,
+per-step minimum **0.1763 at step 293**, and the interval means carry the shape: ~0.41 over steps 1–25,
+a plateau at ~0.33 to step 175, a second drop to ~0.26 by step 300, then flat ~0.27 for the last 75
+steps while the cosine LR decays to zero. Adapter 62 561 688 B, trainable 15 630 336 (0.82 %). Device
+peak: the sampler covering the second half saw **13 249 MiB**, while the smoke run — identical
+configuration, sampled from step 1 — showed **18 063 MiB** in its device table and 17 905 MiB in its own
+sampler. That asymmetry is the finding worth keeping: a
+sampler started late reports a **lower bound**, and the honest peak for the configuration is the number
+from the run that was sampled from the first step (18 GB of 24 GB, ~6 GB headroom).
+
+**Findings (P4 — the adapter is written as root into a bind mount):** `save_pretrained` runs as the
+container's root user, so `adapter_model.safetensors` lands on the host as `root:root`, mode `600` —
+`ls` shows the file sitting there while a plain `scp` of the directory fails with "Permission denied".
+Retrieval is `docker cp <container>:/out/adapter/. <dir>` (which runs as root), or a matching `user:` on
+the service. Worth knowing before the adapter is needed: the run is 30 minutes and the file is the
+deliverable.
+
 **Findings (P4 — an evidence generator can fail in the direction of looking fine):** two bugs in the
 smoke record were found only by re-running it and reading the artifact it produced. (a) The VRAM
 sampler wrote through a single redirected stdout, which is block-buffered, so a run short enough to

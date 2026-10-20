@@ -115,12 +115,18 @@ def plot(rows, out_path, run_json):
 
     steps = [r["step"] for r in rows]
     losses = [r["loss"] for r in rows]
+    lrs = [r.get("lr") for r in rows]
+    toks = [r.get("tokens_s") for r in rows]
     cfg = {}
     if run_json and os.path.exists(run_json):
         with open(run_json, encoding="utf-8") as fh:
             cfg = json.load(fh)
 
-    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=140)
+    fig, axes = plt.subplots(
+        3, 1, figsize=(9, 8.5), dpi=140, sharex=True,
+        gridspec_kw={"height_ratios": [3.2, 1, 1]},
+    )
+    ax = axes[0]
     ax.plot(steps, losses, lw=0.8, alpha=0.45, color="#888", label="per-step loss")
     # A trailing mean is what the eye wants on a noisy SFT curve; 5 % of the run
     # keeps the window scaled to the run rather than to a magic constant.
@@ -131,9 +137,24 @@ def plot(rows, out_path, run_json):
             for i in range(len(losses))
         ]
         ax.plot(steps, smooth, lw=1.8, color="#1f4e79", label=f"mean of last {window}")
-    ax.set_xlabel("optimizer step")
-    ax.set_ylabel("cross-entropy loss (answer tokens only)")
+    ax.set_ylabel("cross-entropy loss\n(answer tokens only)")
     ax.set_title("aiia-docker P4 — LoRA SFT of Qwen3.5-2B-Base")
+
+    # The two panels below are the rest of what the JSONL records.  They are not
+    # decoration: a loss curve alone cannot distinguish "the schedule worked"
+    # from "the schedule stalled while throughput collapsed", and both of those
+    # show up here.
+    if any(v is not None for v in lrs):
+        axes[1].plot(steps, lrs, lw=1.2, color="#a33")
+        axes[1].set_ylabel("learning rate")
+        axes[1].ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+    if any(v is not None for v in toks):
+        axes[2].plot(steps, toks, lw=1.0, color="#2a7")
+        axes[2].set_ylabel("padded tokens/s")
+    for axis in axes:
+        axis.grid(alpha=0.25)
+    axes[2].set_xlabel("optimizer step")
+    ax.legend(loc="upper right", fontsize=8)
 
     run_cfg = cfg.get("run_config", {})
     note = []
