@@ -1,0 +1,60 @@
+# docker compose config — resolved compose specification (aiia-docker stage 2)
+# regenerated with: docker compose config > evidence/compose-config.txt
+# generated: 2026-10-20T18:58:19+02:00 on aarch64, engine 29.2.1, compose 5.0.2
+
+name: aiia-docker
+services:
+  gui:
+    build:
+      context: /home/relja/Projects/aiia-docker/gui
+      dockerfile: Dockerfile
+    depends_on:
+      inference:
+        condition: service_healthy
+        required: true
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: "536870912"
+    environment:
+      API_URL: http://inference:8080/v1
+      GRADIO_TEMP_DIR: /tmp/gradio
+      HOME: /tmp
+      MODEL_ALIAS: aiia-local
+    image: aiia-docker/gui:stage-1
+    networks:
+      default: null
+    ports:
+      - mode: ingress
+        target: 7860
+        published: "7860"
+        protocol: tcp
+    read_only: true
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    user: 65534:65534
+  inference:
+    build:
+      context: /home/relja/Projects/aiia-docker/inference
+      dockerfile: Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: 4
+          memory: "4294967296"
+    expose:
+      - "8080"
+    image: aiia-docker/inference:stage-1
+    networks:
+      default: null
+    read_only: true
+    restart: unless-stopped
+    shm_size: "134217728"
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    user: 65534:65534
+networks:
+  default:
+    name: aiia-docker_default
