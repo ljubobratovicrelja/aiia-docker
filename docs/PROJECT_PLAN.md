@@ -14,20 +14,26 @@ Assemble a Docker container able to run a pre-trained Deep Learning model for in
 inference call wrapped in a web server, and a *separate* container running only a graphical
 interface that requests it — the two isolated with Docker Compose.
 
-We do this with a **small language model served by `llama-server`**, fine-tuned for a few epochs
-into a "coder" adapter, so that the same repo covers the base assignment and the optional training
-clause without a second stack.
+**This project is about the Docker setup, not about the code.** The deliverable that gets graded is
+the container image, the Compose specification and the run parameters; the model and the small
+amount of application code exist only to give the containers something real to do. So: keep
+application code minimal, prefer configuration over code wherever a choice exists, and treat the
+YAML as the primary artifact of the assignment — it should be exemplary on its own terms (service
+separation, healthcheck gating, resource limits, GPU reservation, profiles, volumes).
+
+We serve a **small language model with `llama-server`**, fine-tuned for a few epochs into a "coder"
+adapter, so that one stack covers both the base assignment and the optional training clause.
 
 ## 2. Where each graded item is satisfied
 
 | Graded item (brief) | How it is met | Artifact |
 |---|---|---|
 | Inference in a container on a pre-trained model | `llama-server` serving a Qwen3.5-2B GGUF | `inference/` |
-| GUI used for the inference, isolated in its own container | gradio app, only published port | `gui/`, `compose.yaml` |
+| GUI used for the inference, isolated in its own container | gradio app, the only published port | `gui/`, `compose.yaml` |
 | Inference wrapped in a web server | `llama-server` (OpenAI-compatible HTTP), plus a thin FastAPI layer if a custom route is needed | `inference/` |
 | Dockerfile quality: instructions, existing images, cache layers | `FROM` the official llama.cpp image; app layers ordered above the model layer; cache-hit demo in evidence | `inference/Dockerfile` |
 | Detail of run parameters | memory/cpu limits, shm size, read-only rootfs, non-root, healthcheck gating, GPU reservation | `compose.yaml` |
-| Compose structure for GUI → local API | `gui` depends on `inference` being healthy; inference port not published | `compose.yaml` |
+| Compose structure for GUI → local API | `gui` starts only once `inference` is healthy; inference port not published | `compose.yaml` |
 | **Optional:** train a model for a few epochs | LoRA fine-tune of the served model on code-instruction data | `training/` |
 | **Max grade:** NVIDIA Container Toolkit + training/inference on GPU | `server-cuda13` build target + device reservation (GPU already available on the host) | `compose.yaml` (gpu profile) |
 | **Max grade:** Hugging Face Spaces + online API inference | Space publishing the same small model | `spaces/` or `gui/` |
@@ -47,37 +53,27 @@ clause without a second stack.
     [ training ]  (off the serving path: dataset prep + peft LoRA, GPU)
 ```
 
-- **Two containers is the graded minimum and stays the floor.** A third service is only added if
-  it earns its place (the `training` container is a separate stage, not part of the runtime path).
-- Inference is reachable **only** from the compose network — that is what makes the isolation
-  real rather than nominal.
-- The model is **baked into the image** at a pinned HF revision with a `sha256` check, and also
+- **Two containers is the graded minimum and stays the floor.** A third service is only added if it
+  earns its place; `training` is a separate stage, never on the runtime path.
+- Inference is reachable **only** from the compose network — that is what makes the isolation real
+  rather than nominal.
+- The model is **baked into the image** at a pinned revision with a `sha256` check, and also
   exposed as a volume so a base-model swap can be demonstrated without a rebuild.
 
-## 4. Decisions already taken
+## 4. Decisions taken
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | Runtime is **llama.cpp / GGUF** (`llama-server`), not transformers+torch, not vLLM, not HF TGI | Single binary, CPU-first, OpenAI-compatible server comes free; TGI's own docs call CPU "not the intended platform" |
+| D1 | Runtime is **llama.cpp / GGUF** (`llama-server`) | Single binary, CPU-first, and the OpenAI-compatible web server — which the brief requires — comes with it, so the "wrap the inference in a web server" step needs no extra code |
 | D2 | `FROM ghcr.io/ggml-org/llama.cpp:server` | The brief rewards *leveraging existing images*; a hand-rolled build earns nothing extra. Verified by inspection, see Appendix A |
 | D3 | Model **baked in**, pinned revision + sha256 | "Runs on almost any machine" should mean self-contained; also gives something concrete to say about image size and cache layers |
 | D4 | Inference port **not published** | The GUI must be the only entry point — this is the isolation requirement |
 | D5 | `depends_on: service_healthy` | The base image ships its own `/health` healthcheck, so gating the GUI start costs nothing |
 | D6 | Base model **Qwen3.5-2B** (dense, Apache-2.0) | General small model; the point of the training half is to *make* it a coder, so it must not already be one |
 | D7 | Fine-tune by **LoRA**, served as an adapter | No re-quantisation, ~30 MB artifact, one extra flag at serve time; keeps the training stage off the runtime path |
+| D8 | Application code stays minimal; the Compose spec is the artifact | See §1 — the assignment grades the container setup |
 
-## 5. Considered and rejected
-
-- **YOLO / ultralytics + COCO128** for the training bullet: cheaper evidence (mAP before/after in
-  ~1 minute on GPU, official public Dockerfile to modify). Rejected because the LLM route is the
-  one that keeps a single coherent stack and a portfolio-worthy demo; the cost is that the
-  training evidence is weaker and has to be framed honestly (see R1).
-- **Pointing the stack at the remote HF Inference API**: moves inference *outside* the container
-  and weakens the core criterion. HF Spaces is a *publishing* target, not a runtime.
-- **`llama_index`**: an orchestration layer, not an engine. It earns its place only if a RAG index
-  is added; a ~20-line FastAPI wrapper does the same job otherwise.
-
-## 6. Phases and exit criteria
+## 5. Phases and exit criteria
 
 Each phase ends with something executable that proves it, not with "it should work".
 
@@ -91,27 +87,25 @@ Each phase ends with something executable that proves it, not with "it should wo
 | **P5** | HF Space | public Space URL answering a request |
 | **P6** | Report (≤6 pp) | **not started — awaiting Relja's call** |
 
-## 7. Risks and open questions
+## 6. Risks and open questions
 
-- **R1 — LoRA on a hybrid Mamba/attention model.** Qwen3.5 dense models are not plain
-  transformers (GDN linear-attention layers alongside full attention). Two unknowns: which modules
-  `peft` must target, and whether `convert_lora_to_gguf.py` handles the arch. Under verification
-  in parallel with this plan. **Fallback:** merge the adapter in HF and convert the merged model,
-  or serve the base model and keep the training as a documented standalone stage with its own
-  evidence.
-- **R2 — Honest evidence from a 2B.** A few epochs of LoRA on a 2B changes *behaviour* (code-block
-  shape, docstrings, adherence) long before it changes *capability*. The report must show both:
-  adherence measured objectively (`ast.parse` on outputs) and a small pass@1 delta reported
-  as it is, not as an improvement.
-- **R3 — aarch64 wheels.** Anything torch-based runs on the DGX Spark's GB10, where
-  `pytorch.org/whl/cu130` has no current aarch64 wheels — the PyPI aarch64 build or a CUDA base
-  image is the route.
-- **R4 — 6-page budget.** Every optional item buys marks and costs pages. Order of work is
-  deliberately: graded core first, optional items after.
-- **R5 — Qwen3.5 in llama.cpp.** The conversion package maps `Qwen3_5*` already, but a converted
-  GGUF that loads and generates must be demonstrated, not assumed.
+Each item below is being answered by an investigation, and this section is rewritten with the
+answer (and its evidence) before any development starts. Nothing marked *pending* is an assumption
+we will build on.
 
-## 8. Evidence to collect (the report is built from this, not the reverse)
+| # | Question to answer | Why it matters | Status |
+|---|---|---|---|
+| R1 | Can `peft` LoRA a Qwen3.5-2B (hybrid Mamba/attention, GDN layers)? Which module names must `target_modules` cover? Any known breakage on linear-attention hybrids? | Decides whether the "train a few epochs" clause is a small job or a research project | pending |
+| R2 | Does llama.cpp serve a Qwen3.5 GGUF, and can it load a LoRA adapter for that architecture? Can `convert_lora_to_gguf.py` convert a peft LoRA of it? | Decides whether the adapter is served (D7 as written) or the training stays a separate documented stage | pending |
+| R3 | What is the exact CUDA-PyTorch install route on aarch64 / GB10 (index, version, wheel availability), and is a CUDA base image needed for the `training` container? | Sizes the training environment work and pins the training container's `FROM` | pending |
+| R4 | Dataset facts (exact repo, revision, row count, license, on-disk size) for the corpus candidates, and which objective metric fits the 6-page budget | Removes "which dataset / how do we show it worked" from the critical path | pending |
+| R5 | Can a Hugging Face Space host this model, with which SDK and hardware tier, at what cost — and what are the exact publish steps? | The second max-grade bullet; if it is not free in practice, we drop it deliberately rather than discover it late | pending |
+| R6 | Which of the run parameters we intend to use are actually supported by the Docker/Compose version installed here, and what is the correct syntax for each? | The YAML is a graded artifact; it must be valid on this engine, not aspirational | pending |
+
+**Constraint (not an investigation):** the report is capped at **6 pages including the code**, so the
+number of optional items we attempt is bounded by the page budget, not by ambition.
+
+## 7. Evidence to collect (the report is built from this, not the reverse)
 
 - `docker compose ps` / `up` output showing the healthcheck gating the GUI start;
 - training loss curve, adapter size, base-vs-adapter outputs on a fixed prompt set;
@@ -119,15 +113,38 @@ Each phase ends with something executable that proves it, not with "it should wo
 - image size (`docker images`) and a build-cache hit demonstration;
 - tokens/s and end-to-end latency, CPU vs GPU.
 
-## 9. Open decisions (defaults applied unless overruled)
+## 8. Open decisions (defaults applied unless overruled)
 
 | # | Question | Default taken |
 |---|---|---|
 | O1 | Qwen3.5-2B vs a Qwen3-1.7B-class model | **Qwen3.5-2B** |
-| O2 | Corpus slice | Magicoder-OSS-Instruct-75K, trimmed; CodeAlpaca-20k if a smaller run is wanted |
-| O3 | HF Space | **yes** (second max-grade bullet) |
-| O4 | Adapter served, or training kept as a separate stage | serve it if the GGUF adapter conversion works; otherwise separate stage |
+| O2 | Corpus slice | decided by R4 |
+| O3 | HF Space | **yes** (second max-grade bullet), contingent on R5 |
+| O4 | Adapter served, or training kept as a separate stage | decided by R2 |
 | O5 | GPU: compose profile or the only target | profile, so the CPU-first portability claim survives |
+
+## 9. Pinned sources
+
+Use these; do not substitute alternates found by searching, so that every document in this repo
+points at the same thing.
+
+| What | Where |
+|---|---|
+| Brief (PDF + extracted text) | `docs/assignment/` (mirrors `muia/43506…/notes/theory/AIIA_DockerAssignment.pdf`) |
+| llama.cpp repository | https://github.com/ggml-org/llama.cpp |
+| llama.cpp Docker images and tags | https://github.com/ggml-org/llama.cpp/blob/master/docs/docker.md |
+| llama.cpp server (flags, `--lora`) | https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md |
+| Model card — Qwen3.5-2B, revision `15852e8c16360a2fea060d615a32b45270f8a8fc` | https://huggingface.co/Qwen/Qwen3.5-2B |
+| Corpus — Magicoder-OSS-Instruct-75K | https://huggingface.co/datasets/ise-uiuc/Magicoder-OSS-Instruct-75K |
+| Corpus — Magicoder-Evol-Instruct-110K | https://huggingface.co/datasets/ise-uiuc/Magicoder-Evol-Instruct-110K |
+| Corpus — CodeAlpaca-20k | https://huggingface.co/datasets/sahil2801/CodeAlpaca-20k |
+| Corpus — OpenCodeInstruct | https://huggingface.co/datasets/nvidia/OpenCodeInstruct |
+| peft / LoRA | https://huggingface.co/docs/peft |
+| HF Spaces | https://huggingface.co/docs/hub/spaces |
+| Compose specification | https://docs.docker.com/reference/compose-file/ |
+| GPU access in Compose | https://docs.docker.com/reference/compose-file/services/#gpus |
+| Base image (CPU) | `ghcr.io/ggml-org/llama.cpp:server` |
+| Base image (CUDA 13) | `ghcr.io/ggml-org/llama.cpp:server-cuda13` |
 
 ---
 
