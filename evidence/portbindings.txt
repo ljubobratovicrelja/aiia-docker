@@ -1,0 +1,2 @@
+== inference PortBindings (must be empty / null) ==
+{"8080/tcp":null}

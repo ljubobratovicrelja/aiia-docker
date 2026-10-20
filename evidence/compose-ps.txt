@@ -1,0 +1,4 @@
+== docker compose ps ==
+NAME                      IMAGE                           COMMAND               SERVICE     CREATED          STATUS                    PORTS
+aiia-docker-gui-1         aiia-docker/gui:stage-1         "python app.py"       gui         43 seconds ago   Up 12 seconds             0.0.0.0:7860->7860/tcp, [::]:7860->7860/tcp
+aiia-docker-inference-1   aiia-docker/inference:stage-1   "/app/llama-server"   inference   43 seconds ago   Up 43 seconds (healthy)   8080/tcp
