@@ -69,8 +69,8 @@ adapter, so that one stack covers both the base assignment and the optional trai
 | D3 | Model **baked in**, pinned revision + sha256 | "Runs on almost any machine" should mean self-contained; also gives something concrete to say about image size and cache layers |
 | D4 | Inference port **not published** | The GUI must be the only entry point — this is the isolation requirement |
 | D5 | `depends_on: service_healthy` | The base image ships its own `/health` healthcheck, so gating the GUI start costs nothing |
-| D6 | Base model **Qwen3.5-2B** (dense, Apache-2.0) | General small model; the point of the training half is to *make* it a coder, so it must not already be one |
-| D7 | Fine-tune by **LoRA**, served as an adapter | No re-quantisation, ~30 MB artifact, one extra flag at serve time; keeps the training stage off the runtime path |
+| D6 | Base model **`Qwen/Qwen3.5-2B-Base`**, loaded text-only as `Qwen3_5ForCausalLM` | A general small model that must not already be a coder, and the `-Base` checkpoint because we are doing SFT; text-only so the vision tower stays out of the graph (§6.1 R1) |
+| D7 | Fine-tune by **LoRA with an explicit `target_modules` list**, served as an adapter **if the converter fix is in** — otherwise merge in HF and convert the merged model | No re-quantisation, ~30 MB artifact, one extra flag at serve time; the fallback exists because the in-tree converter cannot handle `linear_attn.out_proj` (§6.1 R2) |
 | D8 | Application code stays minimal; the Compose spec is the artifact | See §1 — the assignment grades the container setup |
 
 ## 5. Phases and exit criteria
@@ -95,8 +95,8 @@ we will build on.
 
 | # | Question to answer | Why it matters | Status |
 |---|---|---|---|
-| R1 | Can `peft` LoRA a Qwen3.5-2B (hybrid Mamba/attention, GDN layers)? Which module names must `target_modules` cover? Any known breakage on linear-attention hybrids? | Decides whether the "train a few epochs" clause is a small job or a research project | pending |
-| R2 | Does llama.cpp serve a Qwen3.5 GGUF, and can it load a LoRA adapter for that architecture? Can `convert_lora_to_gguf.py` convert a peft LoRA of it? | Decides whether the adapter is served (D7 as written) or the training stays a separate documented stage | pending |
+| R1 | Can `peft` LoRA a Qwen3.5-2B (hybrid Mamba/attention, GDN layers)? Which module names must `target_modules` cover? | Decides whether the "train a few epochs" clause is a small job or a research project | **answered — §6.1** |
+| R2 | Does llama.cpp serve a Qwen3.5 GGUF, and can it load a LoRA adapter for that architecture? Can `convert_lora_to_gguf.py` convert a peft LoRA of it? | Decides whether the adapter is served (D7 as written) or the training stays a separate documented stage | **answered — §6.1** |
 | R3 | What is the exact CUDA-PyTorch install route on aarch64 / GB10 (index, version, wheel availability), and is a CUDA base image needed for the `training` container? | Sizes the training environment work and pins the training container's `FROM` | pending |
 | R4 | Dataset facts (exact repo, revision, row count, license, on-disk size) for the corpus candidates, and which objective metric fits the 6-page budget | Removes "which dataset / how do we show it worked" from the critical path | pending |
 | R5 | Can a Hugging Face Space host this model, with which SDK and hardware tier, at what cost — and what are the exact publish steps? | The second max-grade bullet; if it is not free in practice, we drop it deliberately rather than discover it late | pending |
@@ -104,6 +104,58 @@ we will build on.
 
 **Constraint (not an investigation):** the report is capped at **6 pages including the code**, so the
 number of optional items we attempt is bounded by the page budget, not by ambition.
+
+### 6.1 Answers
+
+**R1 — LoRA on Qwen3.5-2B: yes, with an explicit target list.**
+
+- `Qwen/Qwen3.5-2B` is a **composite VLM checkpoint** (`Qwen3_5ForConditionalGeneration`; `text_config`
+  + `vision_config`, and the vision tensors ship in the same repo). There is no official text-only 2B.
+- The text base for this job is **`Qwen/Qwen3.5-2B-Base` loaded text-only as `Qwen3_5ForCausalLM`
+  with `Qwen3_5TextConfig`** — the `-Base` checkpoint because we are doing SFT, and the text class
+  because we do not want the vision tower in the training graph. This matches the arch mapping in
+  llama.cpp's own conversion package (`Qwen3_5ForCausalLM`).
+- **Prefix caveat:** composite weights are named `model.language_model.layers.N.*`; text-only
+  re-saves are `model.layers.N.*`. Train and load the adapter against **one** layout — mixing them
+  is a known hard failure elsewhere.
+- Module names, read from the hub weight index and the modelling source: attention layers carry
+  `q_proj / k_proj / v_proj / o_proj` (+ `q_norm`, `k_norm`; `q_proj` is double-width because
+  `attn_output_gate` is on), the 18 GDN layers carry `linear_attn.in_proj_qkv`, `in_proj_z`,
+  `in_proj_b`, `in_proj_a`, `out_proj`, and the non-linear `conv1d`, `A_log`, `dt_bias`, `norm`.
+- **Use an explicit `target_modules` list, never `all-linear`.** `all-linear` would also attach
+  adapters to the **vision tower** on a composite checkpoint, still cannot adapt the non-linear SSM
+  params, and *silently skips* names that do not match — a typo yields a frozen model with no
+  warning. Baseline set: `q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj` plus
+  `linear_attn.in_proj_qkv`, `linear_attn.in_proj_z`, `linear_attn.out_proj` (see R2 for why
+  `out_proj` may have to be dropped). Verify with `print_trainable_parameters()`.
+- Further constraints found: **QLoRA / 4-bit is explicitly discouraged on Qwen3.5** (abnormal
+  quantisation damage); on GB10 (SM121) neither `causal_conv1d` nor `fla` ship a build, so the GDN
+  path falls back to the slow PyTorch reference (acceptable at our scale); TRL's `sample_packing`
+  is silently ignored for this family; and `peft` issue #2878 reports `all-linear` behaving
+  differently on aarch64 than on x86 — another reason to avoid it.
+
+**R2 — llama.cpp: inference yes; adapter loading yes; the converter is broken in this checkout.**
+
+- The GGUF arch string is **`qwen35`** (not `qwen3_5`), classified **hybrid** rather than recurrent,
+  with graphs in `src/models/qwen35.cpp`.
+- LoRA is applied inside the llama graph (`build_lora_mm`) and qwen35 routes **every** projection
+  through it, the GDN ones included — so **runtime adapter loading works**. The adapter's
+  `general.architecture` must equal the base model's, and every tensor is name- and
+  shape-checked against the base tensor manifest.
+- **However:** base Qwen3.5 linear-attention weights are stored in a V-head-reordered layout that
+  differs from the HF checkpoint, so the adapter must be reordered the same way or LoRA multiplies
+  the wrong weights. The converter does this — when it works.
+- **`convert_lora_to_gguf.py` crashes in our checkout for any adapter that targets
+  `linear_attn.out_proj`**: `LoraTorchTensor.reshape` raises `NotImplementedError` inside the
+  V-head reorder branch. Upstream issue **#21125**, fixed by **PR #28324** (merged 2026-09-30,
+  `b016f461`) — **not in our tree**, whose HEAD is 2026-08-27.
+- Therefore three options, in order of preference: **(a)** update the local llama.cpp checkout past
+  the fix (and check what build the serving image carries); **(b)** drop `linear_attn.out_proj`
+  from `target_modules` — the row-axis GDN projections convert fine; **(c)** bypass the adapter
+  path and merge in HF, then convert the full model.
+- Non-matmul SSM parameters (`conv1d`, `A_log`, `dt_bias`, norms) **cannot** be LoRA targets at all.
+- Separate serving risk worth carrying: upstream issue **#26916**, Qwen3.5 hybrid failing to load
+  with `blk.N.attn_norm.weight` not found (MTP-layer loading), workaround `--no-mtp`.
 
 ## 7. Evidence to collect (the report is built from this, not the reverse)
 
@@ -117,10 +169,10 @@ number of optional items we attempt is bounded by the page budget, not by ambiti
 
 | # | Question | Default taken |
 |---|---|---|
-| O1 | Qwen3.5-2B vs a Qwen3-1.7B-class model | **Qwen3.5-2B** |
+| O1 | Qwen3.5-2B vs a Qwen3-1.7B-class model | **`Qwen3.5-2B-Base`, text-only** (§6.1 R1) |
 | O2 | Corpus slice | decided by R4 |
 | O3 | HF Space | **yes** (second max-grade bullet), contingent on R5 |
-| O4 | Adapter served, or training kept as a separate stage | decided by R2 |
+| O4 | Adapter served, or training kept as a separate stage | **adapter served** if the llama.cpp converter fix is applied; else merged model (§6.1 R2) |
 | O5 | GPU: compose profile or the only target | profile, so the CPU-first portability claim survives |
 
 ## 9. Pinned sources
@@ -134,12 +186,16 @@ points at the same thing.
 | llama.cpp repository | https://github.com/ggml-org/llama.cpp |
 | llama.cpp Docker images and tags | https://github.com/ggml-org/llama.cpp/blob/master/docs/docker.md |
 | llama.cpp server (flags, `--lora`) | https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md |
-| Model card — Qwen3.5-2B, revision `15852e8c16360a2fea060d615a32b45270f8a8fc` | https://huggingface.co/Qwen/Qwen3.5-2B |
+| Model card — Qwen3.5-2B (composite), revision `15852e8c16360a2fea060d615a32b45270f8a8fc` | https://huggingface.co/Qwen/Qwen3.5-2B |
+| Text base for the SFT — Qwen3.5-2B-Base | https://huggingface.co/Qwen/Qwen3.5-2B-Base |
 | Corpus — Magicoder-OSS-Instruct-75K | https://huggingface.co/datasets/ise-uiuc/Magicoder-OSS-Instruct-75K |
 | Corpus — Magicoder-Evol-Instruct-110K | https://huggingface.co/datasets/ise-uiuc/Magicoder-Evol-Instruct-110K |
 | Corpus — CodeAlpaca-20k | https://huggingface.co/datasets/sahil2801/CodeAlpaca-20k |
 | Corpus — OpenCodeInstruct | https://huggingface.co/datasets/nvidia/OpenCodeInstruct |
 | peft / LoRA | https://huggingface.co/docs/peft |
+| Transformers Qwen3.5 model doc (text-only load path) | https://huggingface.co/docs/transformers/en/model_doc/qwen3_5 |
+| Axolotl Qwen3.5 fine-tune guide (LoRA target modules for GDN) | https://docs.axolotl.ai/docs/models/qwen3.5.html |
+| llama.cpp LoRA converter fix for linear-attn `out_proj` — PR #28324 (issue #21125) | https://github.com/ggml-org/llama.cpp/pull/28324 |
 | HF Spaces | https://huggingface.co/docs/hub/spaces |
 | Compose specification | https://docs.docker.com/reference/compose-file/ |
 | GPU access in Compose | https://docs.docker.com/reference/compose-file/services/#gpus |
