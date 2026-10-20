@@ -51,6 +51,15 @@ server.
 take effect under plain `docker compose up` (Engine 29.2.1 / Compose v5.0.2), so the service-level
 `mem_limit`/`cpus` shorthand is unnecessary and declaring both invites drift. `expose:` with no
 `ports:` was confirmed to leave `PortBindings` empty — that is the isolation requirement made real.
+**Findings (risk R3 — CUDA torch on arm64, and a wrong claim of my own):** the plan had carried
+"PyPI/CUDA-index aarch64 wheels stop at torch 2.0.1" as a fact. It is false. It came from grepping
+the index and reading the **tail of an unsorted list** — lexicographically `2.9.1` sorts after
+`2.14.1`, so the newest wheels sat earlier in the output than I looked. Sorted numerically,
+`download.pytorch.org/whl/cu130` ships aarch64 wheels through **2.14.1+cu130** (cp310–cp315), and
+PyPI's default index is current too. The wheels are CUDA builds: the aarch64 wheel carries
+`libtorch_cuda.so` (~461 MB) and pins `cuda-toolkit==13.0.3`. Lesson worth keeping: when the claim
+decides a build decision, sort the list properly or query the version metadata — never eyeball an
+index listing.
 **Findings (risk R4 — corpus):** Magicoder-OSS-Instruct-75K is the pick (MIT, 75,197 rows, ~194 MiB,
 `problem`/`solution`); CodeAlpaca-20k (7.7 MiB) is the light fallback but its `output` is not always
 code. Measured evidence will be two numbers: `ast.parse` adherence and pass@1 on a 50-problem
@@ -62,7 +71,7 @@ reorder branch for any adapter targeting `linear_attn.out_proj` (upstream #21125
 merged 2026-09-30, absent from the local checkout at HEAD 2026-08-27). Base weights are stored in a
 V-head-reordered layout different from HF's, so a mis-reordered adapter multiplies the wrong
 weights rather than failing loudly. Non-matmul SSM params can never be LoRA targets.
-**Duties / To-do:** Awaiting Relja's green light on this plan before any development.
+**Duties / To-do:** Green light given. Working convention from here: one stage at a time, one PR per stage, merge before the next stage starts.
 **Notes:** The plan carries a **pinned-sources table** (model card, corpora, llama.cpp docs, Compose
 spec) and the rule that documents in this repo cite those and only those — a fact re-derived by
 search can silently become a different fact, and the report has to be reproducible.
