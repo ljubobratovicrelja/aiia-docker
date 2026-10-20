@@ -72,6 +72,7 @@ adapter, so that one stack covers both the base assignment and the optional trai
 | D6 | Base model **`Qwen/Qwen3.5-2B-Base`**, loaded text-only as `Qwen3_5ForCausalLM` | A general small model that must not already be a coder, and the `-Base` checkpoint because we are doing SFT; text-only so the vision tower stays out of the graph (§6.1 R1) |
 | D7 | Fine-tune by **LoRA with an explicit `target_modules` list**, served as an adapter **if the converter fix is in** — otherwise merge in HF and convert the merged model | No re-quantisation, ~30 MB artifact, one extra flag at serve time; the fallback exists because the in-tree converter cannot handle `linear_attn.out_proj` (§6.1 R2) |
 | D8 | Application code stays minimal; the Compose spec is the artifact | See §1 — the assignment grades the container setup |
+| D9 | `training/` builds on **`nvcr.io/nvidia/pytorch:26.09-py3`**, bf16, `trl.SFTTrainer`, explicit `target_modules` | CUDA torch is a wheel install on arm64, so the base image is the only real choice; bf16 because a 2B against 128 GB of unified memory needs no quantization (§6.1 R3) |
 
 ## 5. Phases and exit criteria
 
@@ -97,7 +98,7 @@ we will build on.
 |---|---|---|---|
 | R1 | Can `peft` LoRA a Qwen3.5-2B (hybrid Mamba/attention, GDN layers)? Which module names must `target_modules` cover? | Decides whether the "train a few epochs" clause is a small job or a research project | **answered — §6.1** |
 | R2 | Does llama.cpp serve a Qwen3.5 GGUF, and can it load a LoRA adapter for that architecture? Can `convert_lora_to_gguf.py` convert a peft LoRA of it? | Decides whether the adapter is served (D7 as written) or the training stays a separate documented stage | **answered — §6.1** |
-| R3 | What is the exact CUDA-PyTorch install route on aarch64 / GB10 (index, version, wheel availability), and is a CUDA base image needed for the `training` container? | Sizes the training environment work and pins the training container's `FROM` | pending |
+| R3 | What is the exact CUDA-PyTorch install route on aarch64 / GB10 (index, version, wheel availability), and is a CUDA base image needed for the `training` container? | Sizes the training environment work and pins the training container's `FROM` | **answered — §6.1** |
 | R4 | Dataset facts (exact repo, revision, row count, license, on-disk size) for the corpus candidates, and which objective metric fits the 6-page budget | Removes "which dataset / how do we show it worked" from the critical path | **answered — §6.1** |
 | R5 | Can a Hugging Face Space host this model, with which SDK and hardware tier, at what cost — and what are the exact publish steps? | The second max-grade bullet; if it is not free in practice, we drop it deliberately rather than discover it late | **answered — §6.1** |
 | R6 | Which of the run parameters we intend to use are actually supported by the Docker/Compose version installed here, and what is the correct syntax for each? | The YAML is a graded artifact; it must be valid on this engine, not aspirational | **answered — §6.1** |
@@ -156,6 +157,30 @@ number of optional items we attempt is bounded by the page budget, not by ambiti
 - Non-matmul SSM parameters (`conv1d`, `A_log`, `dt_bias`, norms) **cannot** be LoRA targets at all.
 - Separate serving risk worth carrying: upstream issue **#26916**, Qwen3.5 hybrid failing to load
   with `blk.N.attn_norm.weight` not found (MTP-layer loading), workaround `--no-mtp`.
+
+**R3 — CUDA PyTorch on aarch64/GB10: a wheel install, not a build.**
+
+- A claim carried earlier in this plan — that aarch64 CUDA wheels stop at torch 2.0.1 — is **wrong**.
+  It came from reading the *tail* of an unsorted index listing. Re-checked with a numeric sort over
+  the simple indexes: `download.pytorch.org/whl/cu130` ships aarch64 wheels up to **2.14.1+cu130**
+  (cp310–cp315), and PyPI's default index up to **2.14.1**.
+- Those aarch64 wheels are **CUDA-enabled, not CPU-only**: the wheel's central directory carries
+  `torch/lib/libtorch_cuda.so` (~461 MB uncompressed) and its metadata pins `cuda-toolkit==13.0.3`,
+  `nvidia-cudnn-cu13`, `nvidia-nccl-cu13`.
+- `training/` base image: **`nvcr.io/nvidia/pytorch:26.09-py3`** (arm64 digest confirmed with
+  `docker manifest inspect`; CUDA 13.4.1, torch 2.14.0a0, ~12.3 GB compressed). Leaner alternative:
+  `nvcr.io/nvidia/cuda:13.4.1-runtime-ubuntu24.04` (~2.1 GB) plus `pip install torch==2.14.1`.
+  No compilation either way.
+- Stack on top: `transformers`, `peft`, `trl`, `accelerate`, `datasets`, `sentencepiece`, `protobuf`.
+  **Trainer: `trl.SFTTrainer` in bf16, no quantization** — a 2B in bf16 is ~4 GB against 128 GB of
+  unified memory, so 8-bit/4-bit buys nothing, and QLoRA is discouraged on this family anyway
+  (§6.1 R1). Two caveats: the released `peft` has no `qwen3_5` mapping, so `target_modules` must be
+  listed explicitly; and the checkpoint is a hybrid VLM with an MTP head, so pass the processor via
+  `processing_class` — or fall back to a hand-rolled peft + `Trainer` loop if it fights.
+- Environment cost: ~5–25 min image pull plus ~2–4 min of pip. No build step.
+- Not verified: Blackwell sm_120/121 coverage in the wheel's fatbin, the NGC image's exact Python
+  version, and `SFTTrainer` actually running on this hybrid checkpoint — nothing was installed on
+  the host, so that verification belongs to P4.
 
 **R4 — corpus and metric: decided.**
 
@@ -264,6 +289,10 @@ points at the same thing.
 | HF Spaces — Gradio SDK and ZeroGPU | https://huggingface.co/docs/hub/spaces-sdks-gradio |
 | HF pricing (tiers, PRO, GPU rates) | https://huggingface.co/pricing |
 | HF datasets-server API (rows, splits, sizes) | https://datasets-server.huggingface.co/ |
+| NGC PyTorch container (training base image) | https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch |
+| NGC PyTorch release notes (arm64 / CUDA / torch versions) | https://docs.nvidia.com/deeplearning/frameworks/pytorch-release-notes/ |
+| PyTorch aarch64 CUDA wheels | https://download.pytorch.org/whl/cu130/torch/ |
+| TRL SFTTrainer | https://huggingface.co/docs/trl |
 | Eval set — HumanEval | https://huggingface.co/datasets/openai/openai_humaneval |
 | Compose specification | https://docs.docker.com/reference/compose-file/ |
 | GPU access in Compose | https://docs.docker.com/reference/compose-file/services/#gpus |
