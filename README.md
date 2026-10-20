@@ -2,7 +2,7 @@
 
 > Part of the MUIA master's (Universidad de Alicante, 2026-27),
 > course **43506 — Arquitecturas e Infraestructuras para IA** (resp. David Ortiz Pérez).
-> Individual work: the brief specifies no groups.
+
 
 Deployment of a Deep Learning architecture for inference inside Docker containers, with the
 graphical interface isolated from the inference in separate Compose services.
