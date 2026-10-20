@@ -13,3 +13,6 @@ data/hf_cache/
 # Local run artifacts
 .env
 *.log
+
+# Training stage (P4): the adapter + loss log are host state, not sources.
+training/out/

@@ -84,7 +84,7 @@ Each phase ends with something executable that proves it, not with "it should wo
 | **P1** ✅ | CPU two-container baseline: `inference/` + `gui/`, `compose.yaml` | Verified: a prompt through the **GUI container's HTTP API** returns a completion generated inside the inference container; `PortBindings` on inference is `null` while the GUI is published on 7860; limits/shm/read-only/user applied to **both** services |
 | **P2** ✅ | Craft demonstration and measured CPU evidence | Verified: every criterion now has an artifact plus a regeneration command in `docs/EVIDENCE.md` (rows 1–10, 14). Cache ordering proved by building three ways: nothing changed → **every step `CACHED`**; app code edited → the pip layer `CACHED` and only `COPY app.py` re-runs; `LLAMA_ARG_CTX_SIZE` changed → the **1.28 GB model layer `CACHED`**, nothing re-downloaded (`evidence/build-cache.txt`). Image sizes and the full layer breakdown measured (`evidence/image-sizes.txt`), with one size decision actually taken rather than asserted — `pip install --no-cache-dir` kept after building the alternative and measuring it: **461.21 MB vs 545.29 MB (+84.1 MB, +18.2 %)** (`evidence/size-experiment.txt`). Fixed prompt measured on CPU through **both** paths: **8.88 tok/s median isolated** (4.280 s, 38 tokens) and **8.49 tok/s through the GUI** (`evidence/bench-cpu.txt`) — the numbers rows 1–2 and the stage-3 baseline quote |
 | **P3** ✅ | GPU build target + Compose override file, and CPU-vs-GPU numbers | Verified: `inference/Dockerfile` builds a `cpu` target (the default — it is the file's last stage) and a `gpu` target (`server-cuda13`) out of **one shared model stage**, so switching targets never re-downloads the 1.28 GB GGUF (the second build's model layer is `CACHED`); `compose.gpu.yaml` is an **override file** — not a profile: a profile can add a service but cannot re-parameterise an existing one — setting `build.target: gpu`, a distinct image tag, `deploy.resources.reservations.devices` and the offload env; the running container holds a real device request (`HostConfig.DeviceRequests`) and offloads **25/25 layers to GPU** (`CUDA0 model buffer size = 1211.05 MiB`, 1589 MiB per `nvidia-smi` **inside** the container); same fixed prompt, same request body: **134.40 tok/s GPU vs 8.88 CPU** (15.14× effective tokens/s; pooled 135.48 vs 8.74, and 15.63× then 15.08× in the two executions kept in the artifact); plain `docker compose up -d --build` still builds and runs the CPU target unchanged |
-| **P4** | LoRA training stage | adapter file produced, loss curve recorded, base vs adapter outputs on a fixed prompt set captured. **Host: the RTX 3090 Ti machine, not the Spark** — 24 GB is ample for the bf16 LoRA, it is ~2.4× the GB10 on this model, and the Spark's `/` has only 32 GB free against 311 GB there (the training base image alone is ~25 GB unpacked). Adapter returns to the Spark for GGUF conversion and serving on the stage-3 stack. See JOURNAL for the full reason; the Spark's 128 GB unified memory is the fallback if the run needs >24 GB |
+| **P4** | LoRA training stage | adapter file produced, loss curve recorded, base vs adapter outputs on a fixed prompt set captured. **Host: the RTX 3090 Ti machine, not the Spark** — 24 GB is ample for the bf16 LoRA, it is ~2.4× the GB10 on this model, and the Spark's `/` has only 32 GB free against 311 GB there (the training base image alone is ~25 GB unpacked). Adapter returns to the Spark for GGUF conversion and serving on the stage-3 stack. See JOURNAL for the full reason; the Spark's 128 GB unified memory is the fallback if the run needs >24 GB. **Stage implemented and smoke-proven on that machine (§6.2, `evidence/train-smoke.txt`, 10 optimizer steps); the full-length run is a separate launch** |
 | **P5** | HF Space | public Space URL answering a request |
 | **P6** | Report (≤6 pp) | **not started — awaiting Relja's call** |
 
@@ -251,6 +251,44 @@ GPU process. Two engine-level details found on the way: `count: all` resolves to
 while the per-process column still works — that column, plus llama.cpp's own buffer accounting, is
 where a VRAM number has to come from on this machine.
 
+
+### 6.2 P4 implementation — the LoRA stage, and the smoke run that proves it
+
+Built 2026-10-20 (`stage-4-lora`). The stage is `training/` (image + trainer + entrypoint), a
+`training` service in `compose.yaml` under a profile, `scripts/train_lora.sh` (launcher),
+`scripts/plot_loss.py` (curve + live monitor) and `scripts/train_smoke.sh` (the record). Measured
+smoke run: `evidence/train-smoke.txt`.
+
+| Decision | Why | Verified by |
+|---|---|---|
+| Trains on the **second machine** (RTX 3090 Ti 24 GB), never on the serving host | §6.1 R3 + the P4 row: the serving host has 32 GB of free disk against the training image's measured 38.25 GB, and the 3090 Ti is the faster device on this model | the smoke record's host/GUI lines and `df` |
+| `training/Dockerfile` on **`nvcr.io/nvidia/pytorch:26.09-py3`** (plan D9) | CUDA torch preinstalled, multi-arch, no wheel roulette per architecture (§6.1 R3). Measured cost, correcting the plan's estimate: **38.25 GB unpacked, of which the base image is 38.07 GB**, i.e. the whole training stack (transformers/peft/datasets/matplotlib) adds **184 MB**. The plan said "~25 GB" — low by 13 GB, and it is still affordable on a host with 225 GB free | `evidence/train-smoke.txt` §2 |
+| The service is added under **`profiles: ["train"]`**, not as an override, not in the default stack | A profile is the mechanism for *adding* a service (R6); the stage-1 property — plain `docker compose up -d` starts inference + gui and nothing else — has to survive a new optional stage | `docker compose config --services` → `inference gui`; `docker compose up -d --dry-run` creates only those two containers (smoke §1) |
+| No `ports:`, no `expose:`; `restart: "no"` | A trainer needs no interface, only its mounted output dir. And a restart policy on a long job turns a crash into a loop that restarts from step 0 and **overwrites the loss log** on each pass | `compose.yaml`; `docker compose ps training` shows no published port |
+| Weights and corpus in a **mounted host directory**, never baked | The smoke run's 4.5 GB download has to be the full run's download | smoke §9: `/var/tmp/aiia-hf-cache` = 4.5 G with both snapshots symlinked |
+| **No `trl.SFTTrainer`** — a plain `peft` + torch loop | The plan itself named SFTTrainer as the risk on this checkpoint ("fall back to a hand-rolled loop if it fights"), `sample_packing` is ignored for this family, and the required per-step JSONL loss log is a training-loop concern | `training/train_lora.py`; the smoke's loss log |
+| The `-Base` checkpoint is loaded **text-only by explicit re-keying**, not by `from_pretrained` | The repo is the composite layout (`model.language_model.*` + `model.visual.*` + `mtp.*`); `Qwen3_5ForCausalLM` expects `model.layers.*`. A plain `from_pretrained` matches **zero** weights, warns, and trains a randomly initialised model — the exact failure R1 warned about. Non-empty `missing`/`unexpected` is a hard error here | smoke §7 `run.json`: **320 tensors loaded, 312 dropped** (`mtp`, `model.visual`), `missing: []`, `unexpected: []`, **1 881 825 088** text parameters |
+| LoRA `r=16 / alpha=32 / dropout 0.05`, **explicit** `target_modules` incl. the GDN projections | D7/R1: `all-linear` would reach into the vision tower and silently skip unmatched names | `adapter_config.json` in smoke §7; **15 630 336** trainable = 0.82 % of 1.897 B — and the count is *asserted* in code, because peft's typo mode is a silently frozen model |
+| Loss on **answer tokens only**, prompt masked with `-100`; prompt rendered with the tokenizer's own chat template | The `problem` field is long (454 tokens on the first record); unmasked, most of the gradient goes into reproducing problem phrasings. The chat template is used because the GGUF converted from this adapter carries the same one — training on any other format trains for a prompt the server never sends | smoke §8 log line `chat_template=True`; measured on 200 records: sequence tokens 208/524/1024 (min/median/max), **supervised tokens 57/234/612** |
+| Effective batch **2 × 8 = 16 sequences** of ≤ 1024 tokens (~8.4 k padded tokens/step) | A conventional SFT budget for a 2B, and it fits: peak device use measured at 18 063 MiB of 24 564 | smoke §4 + `run.json` (`peak_vram_gib: 10.539` allocated by torch) |
+| `USE_HUB_KERNELS=0` | The GDN layer has an optional hub-kernel path; on a non-SM121 device it resolves to nothing, and on any device it adds a network dependency and a trust boundary to a run whose point is reproducibility | container log: `causal_conv1d_fn` and `chunk_gated_delta_rule` both report the reference PyTorch fallback |
+| Fixed seed, but **bitwise reproducibility not claimed** | Same reason as the stage-3 finding: at bf16 a near-tie flips and the trajectory diverges | JOURNAL 2026-10-20 (stage 3) |
+
+**Smoke result (2026-10-20, RTX 3090 Ti, 10 optimizer steps on 24 records drawn from a 200-record
+scan, one execution, container torn down afterwards):** exit 0, loss **0.4567 → 0.3944**, 4.3–5.3 s
+per optimizer step, ~2.0–2.2 k padded tokens/s, peak **18 063 MiB** in the device table and
+**17 905 MiB** in the sampler (both with `python3` holding 17 414 MiB), adapter **62 561 688 B**
+(60 MB).
+
+**Full-run projection and the reason the loss curve is not the evidence.** 3000 records at 16 per
+step is 187 steps per epoch, so 2 epochs ≈ 375 optimizer steps ≈ **29 min at 4.7 s/step**, plus ~2 min
+already-cached load — call it **35 min**. Two caveats a reader should have in advance: (a) the base
+model's loss on this corpus is already **~0.46 at step 1**, because the median answer is only 234
+code tokens and the corpus is formulaic — the curve will move in a narrow band and its *shape*, not
+its size, is what a figure can honestly show; (b) the adapter came out at **62.5 MB, not the ~30 MB**
+the plan predicted, because peft stores LoRA parameters in fp32 regardless of the bf16 base. The
+discriminating evidence for this bullet is therefore §6.1 R4's two metrics (`ast.parse` adherence and
+pass@1 on a HumanEval slice), measured base vs adapter — not the loss delta.
 
 ## 7. Evidence to collect (the report is built from this, not the reverse)
 

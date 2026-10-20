@@ -1,0 +1,437 @@
+======================================================================
+train-smoke.txt — P4 LoRA training smoke run (aiia-docker stage 4)
+======================================================================
+date            : 2026-10-20T20:52:36+02:00
+host            : Linux 5.15.0-198-generic x86_64, 32 threads
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine          : docker 29.9.1, compose 5.6.0
+docker HOME     : /home/relja
+hf cache (host) : /var/tmp/aiia-hf-cache
+output dir      : /var/tmp/aiia-docker-stage4/training/out
+disk on /       : /dev/nvme2n1p2  458G  214G  221G  50% /
+
+smoke schedule  : MAX_STEPS=10 TRAIN_SIZE=24 SCAN_LIMIT=200
+full-run config : the defaults in training/train_lora.py — 2 epochs, 3000
+                  records drawn from a 20000-record scan, 1024 tokens,
+                  batch 2 x accum 8, lr 1e-4 cosine, LoRA r=16 alpha=32
+
+This is an EMBEDDED smoke test inside one script, so every number below
+comes from one execution on one machine at one time.  The commands are
+printed as they are run — this file is the record, not a transcript.
+
+======================================================================
+# 1. Plain 'docker compose up' still starts ONLY inference + gui (stage-1 property)
+======================================================================
+The training service is added under profiles: ["train"], so it is not part
+of the default stack.  Checked three ways, because 'it has a profile' is a
+claim and these are observations:
+
+$ docker compose config --services
+inference
+gui
+
+$ docker compose --profile train config --services
+inference
+gui
+training
+
+$ docker compose config | grep -c "^  training:"   # plain stack must resolve 0
+0
+
+$ docker compose up -d --dry-run        # what a plain up would create
+ Network aiia-docker_default Creating 
+ Network aiia-docker_default Creating 
+ Network aiia-docker_default Created 
+ Network aiia-docker_default Created 
+ Container aiia-docker-inference-1 Creating 
+ Container aiia-docker-inference-1 Created 
+ Container aiia-docker-gui-1 Creating 
+ Container aiia-docker-gui-1 Created 
+ Container aiia-docker-inference-1 Starting 
+ Container aiia-docker-inference-1 Started 
+ Container aiia-docker-inference-1 Waiting 
+ Container aiia-docker-inference-1 Healthy 
+ Container aiia-docker-gui-1 Starting 
+ Container aiia-docker-gui-1 Started 
+
+======================================================================
+# 2. Build the training image
+======================================================================
+$ docker compose --profile train build training   -> exit 1
+
+--- build log (tail; the base image is ~12 GB compressed) ---
+ Image aiia-docker/training:stage-4 Building 
+mkdir /home/relja/.docker: permission denied
+
+
+--- the pip layer, where the training stack lands ---
+
+$ docker image inspect aiia-docker/training:stage-4 --format '{{.Size}}'
+38248955946
+base image size (narwhal layer removed):
+38065164029
+
+======================================================================
+# 3. Start the smoke run, detached (one execution)
+======================================================================
+Same launcher the full run uses, only the knobs differ:
+
+$ MAX_STEPS=10 TRAIN_SIZE=24 SCAN_LIMIT=200 \
+    scripts/train_lora.sh up
+
+
+======================================================================
+# 0. Preflight — device, disk, and the cache the run will reuse
+======================================================================
+host          : relja-linux x86_64, docker 29.9.1, compose 5.6.0
+gpu           : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+hf cache      : /var/tmp/aiia-hf-cache  (4.5G)
+output dir    : /var/tmp/aiia-docker-stage4/training/out
+disk on /     : 221G free of 458G
+schedule knobs: MAX_STEPS='10' TRAIN_SIZE='24'  SCAN_LIMIT='200' EPOCHS='<default>'
+
+======================================================================
+# 1. Services this invocation will start
+======================================================================
+docker compose config --services        : inference gui 
+docker compose --profile train --services: inference training gui 
+
+======================================================================
+# 2. Build the training image (cache-served after the first time)
+======================================================================
+ Image aiia-docker/training:stage-4 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 548B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 3.09kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.4s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
+#4 resolve docker.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for nvcr.io/nvidia/pytorch:26.09-py3
+#5 DONE 0.7s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 2B done
+#6 DONE 0.0s
+
+#7 [1/7] FROM nvcr.io/nvidia/pytorch:26.09-py3@sha256:6e8ccc607fc2a51e3741667b86316a0889418ba8b78ed0ba96e8d282b648a7a6
+#7 resolve nvcr.io/nvidia/pytorch:26.09-py3@sha256:6e8ccc607fc2a51e3741667b86316a0889418ba8b78ed0ba96e8d282b648a7a6 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 98B done
+#8 DONE 0.0s
+
+#9 [3/7] COPY requirements.txt /app/requirements.txt
+#9 CACHED
+
+#10 [6/7] COPY run.sh /app/run.sh
+#10 CACHED
+
+#11 [2/7] WORKDIR /app
+#11 CACHED
+
+#12 [5/7] COPY train_lora.py /app/train_lora.py
+#12 CACHED
+
+#13 [4/7] RUN pip install --no-cache-dir -r /app/requirements.txt
+#13 CACHED
+
+#14 [7/7] RUN chmod +x /app/run.sh
+#14 CACHED
+
+#15 exporting to image
+#15 exporting layers done
+#15 exporting manifest sha256:d5df32fe47cffbac8d1831425f3474d12fa94188e53a90ae43d53f18e4797566 done
+#15 exporting config sha256:649fcc08eaa3b0cfcf8b88378614f14fde6aa7778e082294d5134c4ea210e33d done
+#15 exporting attestation manifest sha256:0cce6cbfdc20ca072e6b5bf282bd4bb993696d9ea2bf6d03a14b81474a7e2d69 0.0s done
+#15 exporting manifest list sha256:8e32e3c636746a5e6e861d249c2062d76eda750c84f7a13fde293dfdb14085f7
+#15 exporting manifest list sha256:8e32e3c636746a5e6e861d249c2062d76eda750c84f7a13fde293dfdb14085f7 0.0s done
+#15 naming to docker.io/aiia-docker/training:stage-4 done
+#15 unpacking to docker.io/aiia-docker/training:stage-4 done
+#15 DONE 0.1s
+
+#16 resolving provenance for metadata file
+#16 DONE 0.0s
+ Image aiia-docker/training:stage-4 Built 
+
+======================================================================
+# 3. Start the training container, detached
+======================================================================
+ Network aiia-docker_default Creating 
+ Network aiia-docker_default Creating 
+ Network aiia-docker_default Created 
+ Network aiia-docker_default Created 
+ Container aiia-docker-training-1 Creating 
+ Container aiia-docker-training-1 Created 
+ Container aiia-docker-training-1 Starting 
+ Container aiia-docker-training-1 Started 
+
+loss log      : /var/tmp/aiia-docker-stage4/training/out/loss.jsonl
+follow it with: scripts/train_lora.sh tail
+container log : docker compose --profile train logs -f training
+
+scripts/train_lora.sh up -> exit 0
+
+$ docker compose --profile train ps training
+NAME                     IMAGE                          COMMAND         SERVICE    CREATED                  STATUS                  PORTS
+aiia-docker-training-1   aiia-docker/training:stage-4   "/app/run.sh"   training   Less than a second ago   Up Less than a second   6006/tcp, 8888/tcp
+
+======================================================================
+# 4. nvidia-smi DURING the run
+======================================================================
+A sampler runs for the container's whole lifetime.  It is started here so
+that the device reading is taken from inside the training window — a
+before/after pair would show an idle GPU and prove nothing.
+
+--- nvidia-smi (full table) once the first step had been logged ---
+Tue Oct 20 20:53:06 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.178.04             Driver Version: 580.178.04     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 3090 Ti     Off |   00000000:01:00.0 Off |                  Off |
+| 32%   61C    P2            344W /  450W |   18063MiB /  24564MiB |     43%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
+--- device samples: peak and the first/last rows naming a process ---
+peak memory.used : 17905 MiB
+samples taken    : 13
+rows naming a compute process (last 3):
+20:53:00 | mem.used 8597 MiB | 1434820, python3, 8110 MiB;
+20:53:02 | mem.used 17905 MiB | 1434820, python3, 17414 MiB;
+20:53:04 | mem.used 17905 MiB | 1434820, python3, 17414 MiB;
+
+======================================================================
+# 5. Wait for the run to finish
+======================================================================
+container      : 6a97eeb8d2c0bd12ca29f2c3a072e65e041b71a7e9d69506c00dcfd10ee9a171
+waited         : 45s
+exit code      : 0
+oom killed     : false
+
+======================================================================
+# 6. The loss log — every line of it
+======================================================================
+The JSONL the trainer writes, one flushed object per step.  This file is
+the live monitor during a run (scripts/train_lora.sh tail) and the loss
+curve afterwards (scripts/plot_loss.py); it is not a copy of stdout.
+
+$ cat /var/tmp/aiia-docker-stage4/training/out/loss.jsonl
+{"step": 1, "loss": 0.456738, "lr": 5e-06, "tokens_s": 1972.74, "elapsed_s": 23.927}
+{"step": 2, "loss": 0.573574, "lr": 1e-05, "tokens_s": 2083.33, "elapsed_s": 28.613}
+{"step": 3, "loss": 0.542629, "lr": 1.5e-05, "tokens_s": 2159.51, "elapsed_s": 33.106}
+{"step": 4, "loss": 0.490161, "lr": 2e-05, "tokens_s": 2079.19, "elapsed_s": 38.28}
+{"step": 5, "loss": 0.533063, "lr": 2.5e-05, "tokens_s": 2076.83, "elapsed_s": 42.536}
+{"step": 6, "loss": 0.48258, "lr": 3e-05, "tokens_s": 2133.07, "elapsed_s": 47.271}
+{"step": 7, "loss": 0.477803, "lr": 3.5e-05, "tokens_s": 2095.64, "elapsed_s": 51.946}
+{"step": 8, "loss": 0.407779, "lr": 4e-05, "tokens_s": 2051.79, "elapsed_s": 56.526}
+{"step": 9, "loss": 0.434718, "lr": 4.5e-05, "tokens_s": 2157.86, "elapsed_s": 61.317}
+{"step": 10, "loss": 0.394419, "lr": 5e-05, "tokens_s": 2096.52, "elapsed_s": 66.14}
+
+FIRST loss line:
+{"step": 1, "loss": 0.456738, "lr": 5e-06, "tokens_s": 1972.74, "elapsed_s": 23.927}
+LAST loss line:
+{"step": 10, "loss": 0.394419, "lr": 5e-05, "tokens_s": 2096.52, "elapsed_s": 66.14}
+steps logged   : 10
+
+======================================================================
+# 7. The adapter on disk
+======================================================================
+$ ls -l /var/tmp/aiia-docker-stage4/training/out/adapter
+total 61112
+-rw-r--r-- 1 root root     1246 Oct 20 20:53 adapter_config.json
+-rw------- 1 root root 62561688 Oct 20 20:53 adapter_model.safetensors
+-rw-r--r-- 1 root root     5158 Oct 20 20:53 README.md
+-rw-r--r-- 1 root root     1465 Oct 20 20:53 run.json
+
+$ du -sh /var/tmp/aiia-docker-stage4/training/out/adapter
+60M	/var/tmp/aiia-docker-stage4/training/out/adapter
+
+--- adapter_config.json (the LoRA geometry actually used) ---
+{
+  "alora_invocation_tokens": null,
+  "alpha_pattern": {},
+  "arrow_config": null,
+  "auto_mapping": null,
+  "base_model_name_or_path": null,
+  "bias": "none",
+  "corda_config": null,
+  "ensure_weight_tying": false,
+  "eva_config": null,
+  "exclude_modules": null,
+  "fan_in_fan_out": false,
+  "inference_mode": true,
+  "init_lora_weights": true,
+  "kasa_config": null,
+  "layer_replication": null,
+  "layers_pattern": null,
+  "layers_to_transform": null,
+  "loftq_config": {},
+  "lora_alpha": 32,
+  "lora_bias": false,
+  "lora_dropout": 0.05,
+  "lora_ga_config": null,
+  "megatron_config": null,
+  "megatron_core": "megatron.core",
+  "modules_to_save": null,
+  "monteclora_config": null,
+  "peft_type": "LORA",
+  "peft_version": "0.21.2",
+  "qalora_group_size": 16,
+  "r": 16,
+  "rank_pattern": {},
+  "revision": null,
+  "target_modules": [
+    "gate_proj",
+    "up_proj",
+    "down_proj",
+    "linear_attn.in_proj_z",
+    "v_proj",
+    "k_proj",
+    "linear_attn.out_proj",
+    "linear_attn.in_proj_qkv",
+    "q_proj",
+    "o_proj"
+  ],
+  "target_parameters": null,
+  "task_type": "CAUSAL_LM",
+  "trainable_token_indices": null,
+  "use_bdlora": null,
+  "use_dora": false,
+  "use_qalora": false,
+  "use_rslora": false,
+  "velora_config": null
+}
+--- run.json (the effective run config of this container) ---
+{
+  "data_stats": {
+    "degenerate": 0,
+    "too_long": 0,
+    "used_chat_template": true
+  },
+  "effective_batch_sequences": 16,
+  "load_report": {
+    "base_parameters": 1881825088,
+    "dropped_prefixes": [
+      "model",
+      "mtp"
+    ],
+    "layout": "composite -> text-only",
+    "missing": [],
+    "tensors_dropped": 312,
+    "tensors_loaded": 320,
+    "text_config.model_type": "qwen3_5_text",
+    "unexpected": []
+  },
+  "loss_log": "/out/loss.jsonl",
+  "max_seq_len": 1024,
+  "peak_vram_gib": 10.539,
+  "run_config": {
+    "batch_size": 2,
+    "dataset_file": "data-oss_instruct-decontaminated.jsonl",
+    "dataset_repo": "ise-uiuc/Magicoder-OSS-Instruct-75K",
+    "dataset_revision": "5f839b1f368a76b161028bb9edff055db34022b2",
+    "device": "cuda",
+    "epochs": 2,
+    "grad_accum": 8,
+    "log_every": 1,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "lora_r": 16,
+    "loss_log": "/out/loss.jsonl",
+    "lr": 0.0001,
+    "max_seq_len": 1024,
+    "max_steps": 10,
+    "model_repo": "Qwen/Qwen3.5-2B-Base",
+    "model_revision": "b1485b2fa6dfa1287294f269f5fb618e03d52d7c",
+    "output_dir": "/out/adapter",
+    "scan_limit": 200,
+    "seed": 43506,
+    "target_modules": "q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj,linear_attn.in_proj_qkv,linear_attn.in_proj_z,linear_attn.out_proj",
+    "train_size": 24,
+    "warmup_steps": 20
+  },
+  "samples": 24,
+  "steps_run": 10,
+  "trainable_parameters": 15630336,
+  "wall_clock_s": 66.2
+}
+======================================================================
+# 8. Container log (tail) and docker stats
+======================================================================
+$ docker compose --profile train logs --tail 30 training
+training-1  | W1020 18:52:58.803000 1 torch/_library/opaque_object.py:288] register_opaque_type is deprecated, use register_custom_class instead
+training-1  | W1020 18:52:58.803000 1 torch/_library/opaque_object.py:211] typ='value' is deprecated, use typ='constant' instead
+training-1  | W1020 18:52:58.804000 1 torch/_library/opaque_object.py:381] is_opaque_value_type is deprecated, use is_opaque_constant_type instead
+training-1  | W1020 18:52:58.804000 1 torch/_library/opaque_object.py:288] register_opaque_type is deprecated, use register_custom_class instead
+training-1  | W1020 18:52:58.804000 1 torch/_library/opaque_object.py:211] typ='value' is deprecated, use typ='constant' instead
+training-1  | W1020 18:52:58.805000 1 torch/_library/opaque_object.py:381] is_opaque_value_type is deprecated, use is_opaque_constant_type instead
+training-1  | W1020 18:52:58.805000 1 torch/_library/opaque_object.py:288] register_opaque_type is deprecated, use register_custom_class instead
+training-1  | W1020 18:52:58.805000 1 torch/_library/opaque_object.py:211] typ='value' is deprecated, use typ='constant' instead
+training-1  | W1020 18:52:58.805000 1 torch/_library/opaque_object.py:381] is_opaque_value_type is deprecated, use is_opaque_constant_type instead
+training-1  | W1020 18:52:58.805000 1 torch/_library/opaque_object.py:288] register_opaque_type is deprecated, use register_custom_class instead
+training-1  | W1020 18:52:58.805000 1 torch/_library/opaque_object.py:211] typ='value' is deprecated, use typ='constant' instead
+training-1  | /usr/local/lib/python3.12/dist-packages/torch/jit/_script.py:1491: FutureWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+training-1  |   warnings.warn(
+training-1  | trainable params: 15,630,336 || all params: 1,897,455,424 || trainable%: 0.8238
+training-1  | # adapter attached to target_modules: q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj,linear_attn.in_proj_qkv,linear_attn.in_proj_z,linear_attn.out_proj
+training-1  | # corpus: ise-uiuc/Magicoder-OSS-Instruct-75K@5f839b1f 200 scanned -> 24 usable samples (too_long=0, degenerate=0, chat_template=True)
+training-1  | # schedule: 1 steps/epoch, 2 epochs, running 10 steps; effective batch = 2 x 8 = 16 sequences of <= 1024 tokens
+training-1  | [transformers] `causal_conv1d_fn` is falling back to its reference PyTorch implementation because `causal_conv1d` is not installed. This is correct but much slower; install `causal_conv1d` for the optimized kernel.
+training-1  | [transformers] `chunk_gated_delta_rule` is falling back to its reference PyTorch implementation because `flash-linear-attention` is not installed. This is correct but much slower; install `flash-linear-attention` for the optimized kernel.
+training-1  |   step    1/10  loss   0.4567  lr 5.000e-06    1972.7 tok/s   5.34 s/step  elapsed 24s
+training-1  |   step    2/10  loss   0.5736  lr 1.000e-05    2083.3 tok/s   4.69 s/step  elapsed 29s
+training-1  |   step    3/10  loss   0.5426  lr 1.500e-05    2159.5 tok/s   4.49 s/step  elapsed 33s
+training-1  |   step    4/10  loss   0.4902  lr 2.000e-05    2079.2 tok/s   5.17 s/step  elapsed 38s
+training-1  |   step    5/10  loss   0.5331  lr 2.500e-05    2076.8 tok/s   4.26 s/step  elapsed 43s
+training-1  |   step    6/10  loss   0.4826  lr 3.000e-05    2133.1 tok/s   4.73 s/step  elapsed 47s
+training-1  |   step    7/10  loss   0.4778  lr 3.500e-05    2095.6 tok/s   4.67 s/step  elapsed 52s
+training-1  |   step    8/10  loss   0.4078  lr 4.000e-05    2051.8 tok/s   4.58 s/step  elapsed 57s
+training-1  |   step    9/10  loss   0.4347  lr 4.500e-05    2157.9 tok/s   4.79 s/step  elapsed 61s
+training-1  |   step   10/10  loss   0.3944  lr 5.000e-05    2096.5 tok/s   4.82 s/step  elapsed 66s
+training-1  | # adapter written to /out/adapter (peak VRAM 10.54 GiB, wall clock 66s)
+
+$ docker stats --no-stream training
+Error response from daemon: No such container: training
+
+======================================================================
+# 9. Teardown — nothing left running
+======================================================================
+$ docker compose --profile train down
+ Container aiia-docker-training-1 Stopped 
+ Container aiia-docker-training-1 Removing 
+ Container aiia-docker-training-1 Removed 
+ Network aiia-docker_default Removing 
+ Network aiia-docker_default Removed 
+
+remaining containers on this host (must not list training):
+searxng-valkey	Up 26 hours
+searxng-core	Up 26 hours
+tt-hub-test	Exited (0) 8 months ago
+blissful_williams	Exited (0) 9 months ago
+interesting_blackburn	Exited (0) 9 months ago
+serene_mendeleev	Exited (255) 9 months ago
+intelligent_golick	Exited (130) 9 months ago
+harbor.ollama-init	Exited (0) 9 months ago
+harbor.webui	Exited (0) 9 months ago
+harbor.ollama	Exited (0) 9 months ago
+
+training containers remaining: 0
+
+cache kept for the full run — the smoke run's download is reused, not repeated:
+4.5G	/var/tmp/aiia-hf-cache
+lrwxrwxrwx 1 root root 76 Oct 20 20:39 /var/tmp/aiia-hf-cache/hub/datasets--ise-uiuc--Magicoder-OSS-Instruct-75K/snapshots/5f839b1f368a76b161028bb9edff055db34022b2/data-oss_instruct-decontaminated.jsonl -> ../../blobs/f988f14d3516a9f958eeea310f63903727c6d3463bc9cb435288b6ca4bb09cf9
+lrwxrwxrwx 1 root root 76 Oct 20 20:39 /var/tmp/aiia-hf-cache/hub/models--Qwen--Qwen3.5-2B-Base/snapshots/b1485b2fa6dfa1287294f269f5fb618e03d52d7c/model.safetensors-00001-of-00001.safetensors -> ../../blobs/928acbf11878c32185bbd863514d191769285065ab9ea14fbfe431303f5fdf2d
