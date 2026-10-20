@@ -289,6 +289,28 @@ Retrieval is `docker cp <container>:/out/adapter/. <dir>` (which runs as root), 
 the service. Worth knowing before the adapter is needed: the run is 30 minutes and the file is the
 deliverable.
 
+**Findings (P4 benchmark — the adapter changed style, not correctness):** 150 generations (10 fixed
+prompts × 5 sampled runs × 3 arms; base and tuned serve the *same* GGUF, the adapter is the only
+difference). Verdict: no demonstrated coding gain. On the code-review prompt neither arm of the pair
+finds the real bug — the cache evicts the most-recently-*inserted* key, because only `get` moves a key
+to the front, so `popitem(last=True)` never evicts the LRU — and both arms hallucinate confidently about
+it; one tuned run's "corrected version" is the original code unchanged. What is real and repeatable:
+tuned answers are ~45 % shorter (6 594 vs 11 908 completion tokens over 50 runs) and never hit the token
+cap (0/50 vs base 7/50). That terseness is a genuine win on `reasoning-1` (2/5 correct vs 0/5) and a
+genuine regression on the email prompt, where 4/5 tuned replies are third-person *descriptions* of the
+requested email rather than the email. Held-out perplexity moves the wrong way, slightly: 9.0791 → 9.1941
+(general prose) and 3.0116 → 3.0758 (code). Two things worth keeping from the base side: at these
+settings the *base* model leaks chat-template artefacts mid-answer (`...}`) and contradicts itself
+arithmetically (computes 6:20 PM, prints 19:20); and simple clock arithmetic is unreliable in every arm —
+tuned's best runs reach 18:05, one reaches it and then relabels it "6:05 AM the next day".
+
+**Findings (P4 benchmark — what the method had to be, twice):** the shipped GGUF is the **instruct**
+lineage while the adapter was trained on the **Base** checkpoint, so the only honest pair is base vs
+base+adapter at identical quantization; measuring the adapter against the production model would have
+silently reported "base vs post-trained" as "the adapter's effect". And the first-run canaries are
+seed-driven, not arm-driven: at seed 43507 all three arms returned `{}` for the strict-JSON prompt, which
+is a sampling artefact that a single-run benchmark would have published as a model difference.
+
 **Findings (P4 — an evidence generator can fail in the direction of looking fine):** two bugs in the
 smoke record were found only by re-running it and reading the artifact it produced. (a) The VRAM
 sampler wrote through a single redirected stdout, which is block-buffered, so a run short enough to

@@ -166,6 +166,8 @@ it, in **[`docs/EVIDENCE.md`](docs/EVIDENCE.md)**.
 ./scripts/evidence.sh            # stack health, isolation, one end-to-end completion
 ./scripts/train_smoke.sh         # training smoke run -> evidence/train-smoke.txt  (on the GPU host)
 ./scripts/train_record.sh        # full training run  -> evidence/train-run.txt    (on the GPU host)
+./scripts/bench_finetune.sh      # base vs adapter, 150 generations -> evidence/bench-finetune.json
+python3 scripts/analyze_bench_finetune.py   # the tables the benchmark report quotes
 ```
 
 Headline numbers (fixed prompt, 3 runs each): **8.88 tokens/s** median on CPU through the model's own
@@ -188,8 +190,11 @@ the two-container default stack is untouched — plus `scripts/train_lora.sh`, `
 **fully run**: 374 optimizer steps (2 epochs) in 1801 s on the RTX 3090 Ti, exit 0, no OOM, loss
 0.4070 → 0.3359, adapter 62 561 688 B — [`evidence/train-run.txt`](evidence/train-run.txt),
 [`evidence/loss-curve.png`](evidence/loss-curve.png) and
-[`docs/TRAINING_REPORT.md`](docs/TRAINING_REPORT.md). What remains is the base-vs-adapter comparison
-(plan §6.1 R4), which is a deliberately separate task.
+[`docs/TRAINING_REPORT.md`](docs/TRAINING_REPORT.md). The base-vs-adapter comparison has since been
+measured — 150 generations, the adapter served against its own base at identical quantization — and
+reads as a **negative result on correctness with a large style change**; the reading is in
+[`docs/BENCHMARK_REPORT.md`](docs/BENCHMARK_REPORT.md). Still unmeasured: plan §6.1 R4's
+`ast.parse`/pass@1 metrics.
 
 Stage 3 (GPU variant and CPU-vs-GPU profiling) adds the `cpu`/`gpu` build targets over one shared
 model stage, [`compose.gpu.yaml`](compose.gpu.yaml), `scripts/bench_gpu.sh`,
