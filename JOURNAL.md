@@ -85,6 +85,52 @@ which will hit the same behaviour.
 the gradio container runs comfortably in 512 MiB and survives `read_only: true` with `HOME=/tmp` and
 a `/tmp` tmpfs — that combination is not obvious and was worth testing rather than assuming.
 **Duties / To-do:** Green light given. Working convention from here: one stage at a time, one PR per stage, merge before the next stage starts.
+**Finding (stage 2 — `touch` does not invalidate a `COPY` layer):** the cache demonstration everyone
+expects — `touch` the app code, rebuild, and watch the app layer re-run while the dependency layer
+above it stays cached — **does not happen** on this engine. BuildKit keys a `COPY` step on the
+**content digest** of the copied files, not on their mtime, so after `touch gui/app.py` the rebuild
+reports `CACHED` for every step including `COPY app.py`; nothing re-runs at all. The demonstration
+therefore shows both cases, and the property the Dockerfile layer order actually buys is shown with a
+real content edit: pip layer `CACHED`, `COPY app.py` re-run. Worth keeping because the brief itself
+recommends "take the Dockerfile order into account to make proper use of the cache" — anyone testing
+that advice with `touch` would conclude, wrongly, that the ordering does nothing. Cost: one build
+cycle, and it changed what the demo had to contain.
+**Finding (stage 2 — a cache demo can stop demonstrating itself):** the first version of
+`scripts/cache_demo.sh` appended a fixed marker line to `gui/app.py` to force the app layer to
+rebuild. It worked — and then it stopped working on the second run: because a `COPY` step is keyed on
+source content, the marker layer from run 1 was already in the build cache, so run 2 reported `CACHED`
+for the app layer and the script's own assertion caught the difference between "the demo proved it"
+and "the demo looked like it proved it". The marker now carries a timestamp and pid. General lesson
+worth keeping: **a demonstration that writes a file it also caches against is not idempotent until
+its input is unique** — and the assertion is what made the failure visible instead of a silently
+degraded artifact.
+**Finding (stage 2 — Engine 29 changed what `docker images` reports):** the table now prints
+`DISK USAGE` and `CONTENT SIZE` columns and **`CONTENT SIZE` reads `0B`**, which is a trap if the
+report quotes that column as "the image size". Authoritative byte counts come from
+`docker image inspect --format '{{.Size}}'`. Also new: image size and the sum of layer sizes differ
+by under 1 MB here, so layer arithmetic is a sound way to say where the bytes are.
+**Finding (stage 2 — gradio's result stream carries no usage block):** the `POST
+/gradio_api/call/v2/chat` + SSE result returns only the text, so completion tokens cannot be read off
+the end-to-end path the way they can off the isolated API (`usage.completion_tokens`). Counting them
+by posting the returned text to llama-server's own `/tokenize` gives exactly the same number as the
+usage block when checked against the isolated call — that is the method `scripts/bench_probe.py`
+uses, and it is the only way to state effective tokens/s for the GUI path without guessing.
+**Notes (stage 2 — measured, CPU-only, Cortex-X925, 20 threads, shared host):** fixed 38-token prompt
+at **9.08 tokens/s** median through the model's own API inside the compose network (median 4.183 s),
+and **8.84 tokens/s** end-to-end through gradio at 67–89 tokens per run. Re-run during review gave
+8.88 / 8.49 tok/s on the same scripts — a few percent of drift between executions, so the committed
+artifact is the reference and no single figure should be quoted as exact. The GUI's elapsed time is
+longer than the isolated call's, but that is **not** transport overhead — `gui/app.py` samples at
+temperature 0.7 / max_tokens 512 while the probe pins 0 / 160, so it simply generates more tokens;
+tokens/s is the number the two paths can be compared on, which is why the evidence reports both the
+per-run rate and the median instead of only latency. Decision recorded: the GUI's sampling parameters
+were **not** changed to make the benchmark prettier.
+**Notes (stage 2 — image arithmetic):** `inference` is 2 117 416 629 B, of which the pinned GGUF layer
+is **1.28 GB (60.5 % of all layer bytes)** and the upstream apt layer 706 MB; `gui` is 461 208 892 B
+with the `pip install` layer at 317 MB (68.6 %). Keeping `--no-cache-dir` is worth **84.1 MB
+(+18.2 %)** — measured by building the alternative, not assumed: without the flag the pip layer grows
+317 MB → 401 MB (545.29 MB image). That is the one size claim the report can make with numbers behind
+it.
 **Notes:** The plan carries a **pinned-sources table** (model card, corpora, llama.cpp docs, Compose
 spec) and the rule that documents in this repo cite those and only those — a fact re-derived by
 search can silently become a different fact, and the report has to be reproducible.
