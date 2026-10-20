@@ -1,8 +1,6 @@
 # Project plan — Assignment 2 (Docker) · MUIA 43506
 
-**Repository:** `ljubobratovicrelja/aiia-docker` · **Author:** Relja Ljubobratović (**individual work** —
-the Docker brief specifies no groups; the "groups of 2 or 3 students" line belongs to the
-Practice 1 brief and does not appear here)
+**Repository:** `ljubobratovicrelja/aiia-docker` · **Author:** Relja Ljubobratović · **individual work**
 **Deadline:** 2026-10-25 00:00 (Moodle, *Submission Practical Assignment Docker*)
 **Weight:** 25% of the practical grade
 
@@ -176,7 +174,6 @@ number of optional items we attempt is bounded by the page budget, not by ambiti
 | O3 | HF Space | **yes** (second max-grade bullet), contingent on R5 |
 | O4 | Adapter served, or training kept as a separate stage | **adapter served** if the llama.cpp converter fix is applied; else merged model (§6.1 R2) |
 | O5 | GPU: compose profile or the only target | profile, so the CPU-first portability claim survives |
-| O6 | Is Alex joining this assignment? The spec is silent and Practice 1's group clause does not carry over | **no** until confirmed; if he joins, the number of authors and who writes what change |
 
 ## 9. Pinned sources
 
