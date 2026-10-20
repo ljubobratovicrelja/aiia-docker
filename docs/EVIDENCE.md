@@ -63,6 +63,26 @@ artifacts are authoritative.
 | change `LLAMA_ARG_CTX_SIZE` | 1.28 GB model layer `CACHED` — no re-download | `build-cache.txt` C |
 | gui → inference overhead | not separable from noise: both paths land in the same 8.0–9.1 tok/s band across runs, so any gradio hop cost sits below the run-to-run variance of a multi-second generation on a shared host | `bench-cpu.txt` |
 
+### 2.1 The same stack on a second GPU
+
+The identical committed branch, the identical `compose.yaml` + `compose.gpu.yaml` and the identical
+pinned model (revision and sha256 unchanged) were also run on a second machine — **RTX 3090 Ti,
+Ryzen 9 7950X3D, x86_64** — with nothing changed but the host. Each machine is compared against its
+**own** CPU baseline, so neither comparison mixes hosts:
+
+- DGX Spark / GB10 — CPU 8.88 → GPU **134.40 tok/s** isolated (**15.14×**); GUI 8.49 → 132.62.
+- Second machine / RTX 3090 Ti — CPU 10.00 → GPU **320.66 tok/s** isolated (**32.07×**); GUI 9.79 → 310.00.
+- The two CPU baselines are within ~13 % of each other, so on this workload the difference is the
+  GPU: the 3090 Ti serves the 2B Q4 model at roughly **2.4×** the GB10's rate.
+- The mechanism is identical on both hosts — `offloaded 25/25 layers to GPU`, `CUDA0 model buffer
+  size = 1211.05 MiB` (~1392 MiB projected), device request
+  `[{driver: nvidia, count: all, capabilities: [gpu]}]`. One instrumentation difference is worth
+  knowing: the GB10 withholds VRAM counters (`N/A`, unified memory) where the 3090 Ti reports
+  **2191 MiB / 24564 MiB** from inside the container.
+
+Artifacts: `evidence/gpu-3090ti/` — a condensed `gpu.txt` (device-use proof only) plus
+`bench-cpu.txt` and `bench-gpu.txt`, produced by the same scripts on that host.
+
 ## 3. Reproduce everything
 
 ```bash
@@ -115,7 +135,9 @@ compare `git status --short` against the snapshot taken before the run. `bench.s
   prompt, same request body, same server, same image. It is stable within an execution and not
   across them. Greedy decoding is only "greedy" if the arithmetic is identical, and the CPU and CUDA
   kernels (with flash-attention on the GPU side) are not bit-for-bit equivalent, so a near-tie flips
-  and the trajectory diverges from there.
+  and the trajectory diverges from there. The same effect appears between two *CPU* backends: the
+  x86 baseline in §2.1 emitted 59 tokens where this host's ARM CPU emitted 38 — so the
+  divergence is a property of the arithmetic, not of the GPU.
   **Consequence: the completion-token count is part of the measurement, not a constant.** The
   comparison is made on *effective tokens/s* with the token count quoted beside every number, and
   the artifact keeps *two* executions so the spread is visible rather than averaged away. What is

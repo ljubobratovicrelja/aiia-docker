@@ -74,7 +74,9 @@ On this host (one GB10) it is not decorative: the server loads with `offloaded 2
 GPU`, `CUDA0 model buffer size = 1211.05 MiB`, `nvidia-smi` **inside** the container lists
 `/app/llama-server` holding 1589 MiB, and the same fixed prompt runs at **134.40 tokens/s against
 8.88 on CPU** — 15.14× effective tokens/s. Full logs and the CPU-vs-GPU tables: `evidence/gpu.txt`
-and `evidence/bench-gpu.txt`.
+and `evidence/bench-gpu.txt`. The same branch and the same two Compose files also run unchanged on a
+second machine with an **RTX 3090 Ti** — 320.66 tok/s against 10.00 on that host's own CPU (32.07×) —
+see §2.1 of [`docs/EVIDENCE.md`](docs/EVIDENCE.md).
 
 ## Evidence
 

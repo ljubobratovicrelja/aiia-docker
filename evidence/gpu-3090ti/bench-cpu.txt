@@ -1,0 +1,286 @@
+======================================================================
+bench-cpu.txt — fixed-prompt throughput on CPU (aiia-docker stage 2)
+======================================================================
+date          : 2026-10-20T19:43:29+02:00
+host          : x86_64, 29.9.1 engine, 5.6.0 compose
+cpu           : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+runs per path : 3
+prompt        : Write a Python function that returns the nth Fibonacci number. Include only the code and one short comment.
+
+Thinking-model note: the pinned Qwen3.5-2B GGUF is a reasoning model.
+Both requests send {"chat_template_kwargs":{"enable_thinking":false}}
+plus a max_tokens cap; without them the reply lands in reasoning_content
+at thousands of tokens and the client times out.
+
+Path notes:
+  inference — reached only from inside the compose network via
+              'docker compose exec -T inference curl'; inference has no
+              'ports:' mapping at all.  Probe pins temperature 0 and
+              max_tokens 160, so runs are deterministic and token counts
+              comparable across runs.
+  gui       — the published gradio HTTP API.  gui/app.py samples at its
+              own temperature 0.7 / max_tokens 512, so run lengths differ
+              slightly from the isolated path; that is precisely why the
+              comparable metric is effective tokens/s, not raw elapsed.
+  gui tokens are counted by posting the returned text to llama-server's
+  own /tokenize, which was verified to equal usage.completion_tokens
+  exactly on the isolated path (gradio's stream carries no usage block).
+
+======================================================================
+
+######################################################################
+# PATH: inference — 3 runs
+######################################################################
+
+---------- inference run 1/3 ----------
+started 1: 2026-10-20T19:43:29+02:00
+--- raw response (inference) ---
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```python\ndef fib(n):\n    if n <= 1:\n        return n\n    a, b = 0, 1\n    for _ in range(n - 1):\n        a, b = b, a + b\n    return b\n```"
+      }
+    }
+  ],
+  "created": 1792518215,
+  "model": "aiia-local",
+  "system_fingerprint": "b11749-1d88cb05f",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 59,
+    "prompt_tokens": 32,
+    "total_tokens": 91,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "id": "chatcmpl-X2cihLIm9soosRmhv1ZRpkEAsFU3Xdsg",
+  "timings": {
+    "cache_n": 0,
+    "prompt_n": 32,
+    "prompt_ms": 257.502,
+    "prompt_per_token_ms": 8.0469375,
+    "prompt_per_second": 124.27087944948,
+    "predicted_n": 59,
+    "predicted_ms": 5877.324,
+    "predicted_per_token_ms": 101.3331724137931,
+    "predicted_per_second": 9.868436723924018
+  }
+}
+--- completion text ---
+```python
+def fib(n):
+    if n <= 1:
+        return n
+    a, b = 0, 1
+    for _ in range(n - 1):
+        a, b = b, a + b
+    return b
+```
+--- measured ---
+inference   elapsed 6.136 s | completion_tokens 59 | 9.61 tokens/s
+__SUMMARY__ {"mode": "inference", "elapsed_s": 6.136, "completion_tokens": 59, "tokens_per_s": 9.61}
+
+---------- inference run 2/3 ----------
+started 2: 2026-10-20T19:43:35+02:00
+--- raw response (inference) ---
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```python\ndef fib(n):\n    if n <= 1:\n        return n\n    a, b = 0, 1\n    for _ in range(n - 1):\n        a, b = b, a + b\n    return b\n```"
+      }
+    }
+  ],
+  "created": 1792518221,
+  "model": "aiia-local",
+  "system_fingerprint": "b11749-1d88cb05f",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 59,
+    "prompt_tokens": 32,
+    "total_tokens": 91,
+    "prompt_tokens_details": {
+      "cached_tokens": 28
+    }
+  },
+  "id": "chatcmpl-Nv5ACspk2tGShGzkcAf7EMFVbNg8gTJv",
+  "timings": {
+    "cache_n": 28,
+    "prompt_n": 4,
+    "prompt_ms": 89.096,
+    "prompt_per_token_ms": 22.274,
+    "prompt_per_second": 44.89539373260303,
+    "predicted_n": 59,
+    "predicted_ms": 5799.938,
+    "predicted_per_token_ms": 99.99893103448277,
+    "predicted_per_second": 10.000106897694423
+  }
+}
+--- completion text ---
+```python
+def fib(n):
+    if n <= 1:
+        return n
+    a, b = 0, 1
+    for _ in range(n - 1):
+        a, b = b, a + b
+    return b
+```
+--- measured ---
+inference   elapsed 5.902 s | completion_tokens 59 | 10.00 tokens/s
+__SUMMARY__ {"mode": "inference", "elapsed_s": 5.902, "completion_tokens": 59, "tokens_per_s": 10.0}
+
+---------- inference run 3/3 ----------
+started 3: 2026-10-20T19:43:41+02:00
+--- raw response (inference) ---
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "```python\ndef fib(n):\n    if n <= 1:\n        return n\n    a, b = 0, 1\n    for _ in range(n - 1):\n        a, b = b, a + b\n    return b\n```"
+      }
+    }
+  ],
+  "created": 1792518227,
+  "model": "aiia-local",
+  "system_fingerprint": "b11749-1d88cb05f",
+  "object": "chat.completion",
+  "usage": {
+    "completion_tokens": 59,
+    "prompt_tokens": 32,
+    "total_tokens": 91,
+    "prompt_tokens_details": {
+      "cached_tokens": 28
+    }
+  },
+  "id": "chatcmpl-XKnrFccSqGg0HiYWFzVAljk3fYLAHMHE",
+  "timings": {
+    "cache_n": 28,
+    "prompt_n": 4,
+    "prompt_ms": 99.14,
+    "prompt_per_token_ms": 24.785,
+    "prompt_per_second": 40.346984062941296,
+    "predicted_n": 59,
+    "predicted_ms": 5799.955,
+    "predicted_per_token_ms": 99.99922413793104,
+    "predicted_per_second": 10.000077586808864
+  }
+}
+--- completion text ---
+```python
+def fib(n):
+    if n <= 1:
+        return n
+    a, b = 0, 1
+    for _ in range(n - 1):
+        a, b = b, a + b
+    return b
+```
+--- measured ---
+inference   elapsed 5.901 s | completion_tokens 59 | 10.00 tokens/s
+__SUMMARY__ {"mode": "inference", "elapsed_s": 5.901, "completion_tokens": 59, "tokens_per_s": 10.0}
+
+######################################################################
+# PATH: gui — 3 runs
+######################################################################
+
+---------- gui run 1/3 ----------
+started 1: 2026-10-20T19:43:47+02:00
+--- raw response (gui) ---
+event: complete
+data: ["```python\ndef nth_fibonacci(n):\n    \"\"\"Returns the nth Fibonacci number using dynamic programming.\"\"\"\n    if n <= 0:\n        return 0\n    a, b = 0, 1\n    for _ in range(n - 1):\n        a, b = b, a + b\n    return b\n```", null]
+
+
+--- completion text ---
+```python
+def nth_fibonacci(n):
+    """Returns the nth Fibonacci number using dynamic programming."""
+    if n <= 0:
+        return 0
+    a, b = 0, 1
+    for _ in range(n - 1):
+        a, b = b, a + b
+    return b
+```
+--- measured ---
+gui         elapsed 7.561 s | completion_tokens 74 | 9.79 tokens/s
+__SUMMARY__ {"mode": "gui", "elapsed_s": 7.561, "completion_tokens": 74, "tokens_per_s": 9.79}
+
+---------- gui run 2/3 ----------
+started 2: 2026-10-20T19:43:54+02:00
+--- raw response (gui) ---
+event: complete
+data: ["```python\ndef nth_fib(n):\n    return fib(n)\n\ndef fib(n):\n    if n == 0:\n        return 0\n    elif n == 1:\n        return 1\n    return fib(n-1) + fib(n-2)\n```", null]
+
+
+--- completion text ---
+```python
+def nth_fib(n):
+    return fib(n)
+
+def fib(n):
+    if n == 0:
+        return 0
+    elif n == 1:
+        return 1
+    return fib(n-1) + fib(n-2)
+```
+--- measured ---
+gui         elapsed 6.305 s | completion_tokens 62 | 9.83 tokens/s
+__SUMMARY__ {"mode": "gui", "elapsed_s": 6.305, "completion_tokens": 62, "tokens_per_s": 9.83}
+
+---------- gui run 3/3 ----------
+started 3: 2026-10-20T19:44:01+02:00
+--- raw response (gui) ---
+event: complete
+data: ["```python\ndef fib(n):\n    if n < 0:\n        raise ValueError(\"n must be non-negative\")\n    if n <= 1:\n        return n\n    return fib(n - 1) + fib(n - 2)\n\n# Example: fib(10) returns 55\n```", null]
+
+
+--- completion text ---
+```python
+def fib(n):
+    if n < 0:
+        raise ValueError("n must be non-negative")
+    if n <= 1:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+# Example: fib(10) returns 55
+```
+--- measured ---
+gui         elapsed 7.104 s | completion_tokens 69 | 9.71 tokens/s
+__SUMMARY__ {"mode": "gui", "elapsed_s": 7.104, "completion_tokens": 69, "tokens_per_s": 9.71}
+
+==============================================================================
+SUMMARY — fixed prompt, 3 inference + 3 gui runs
+==============================================================================
+path        run    elapsed_s   comp_tok     tokens/s
+inference   1          6.136         59         9.61
+inference   2          5.902         59        10.00
+inference   3          5.901         59        10.00
+gui         1          7.561         74         9.79
+gui         2          6.305         62         9.83
+gui         3          7.104         69         9.71
+------------------------------------------------------------------------------
+median across runs (tokens/s = median of the per-run effective rates;
+pooled = total completion tokens / total elapsed):
+inference        5.902         59        10.00   pooled 9.87 tok/s
+gui              7.104         69         9.79   pooled 9.78 tok/s
+
+gui - inference median elapsed: +1.202 s.  Not a like-for-like latency
+difference: this probe pins temperature 0 / max_tokens 160 on the
+isolated call, while gui/app.py samples at its own temperature 0.7 /
+max_tokens 512 — so the gui run generates more tokens.  Effective
+tokens/s is the comparable number; the elapsed delta is mostly extra
+generation, not gradio overhead.
