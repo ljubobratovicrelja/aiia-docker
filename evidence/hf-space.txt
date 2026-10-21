@@ -1,0 +1,63 @@
+======================================================================
+hf-space.txt — P5: the fine-tuned model served from a Hugging Face Space
+======================================================================
+What this file is
+-----------------
+The assignment's last max-grade bullet is "Upload to Hugging Face spaces and use of
+online API inference". This artifact is the proof of the second half: a call to the
+*public* Space API from outside, with no local model, no local GPU and no container,
+plus the runtime facts (stage, hardware) read back from the Hub.
+
+Regenerate with
+---------------
+  export HF_TOKEN=<a token that can read the Space's runtime>   # optional, for metadata
+  python3 scripts/verify_hf_space.py --max-new-tokens 200
+
+What is being served
+--------------------
+  model    : ljubobratovicrelja/qwen3.5-2b-magicoder-lora  (merged text-only, bf16, 3.76 GB)
+  app      : space/app.py  — the model loads at Space start (outside @spaces.GPU, where
+             CUDA is emulated, so the load costs no ZeroGPU quota) and generation runs
+             inside @spaces.GPU(duration=30)
+  sampler  : the Qwen3.5 card's non-thinking text set, reproduced exactly — including
+             presence_penalty=2.0 as a hand-rolled LogitsProcessor, because transformers
+             5.20 dropped the parameter and llama.cpp applied it in the benchmark
+  hardware : ZeroGPU (zero-a10g) — a PRO account's 40 GPU-min/day, 10 ZeroGPU Spaces
+
+Deployment notes worth keeping (all of them cost a cycle to learn)
+------------------------------------------------------------------
+* The Hub's free tier no longer covers compute Spaces at all: creating a Gradio or Docker
+  Space on cpu-basic returns 402, and so does ZeroGPU without PRO. The model repo is
+  free and needs none of this; only the *serving* half is paid.
+* Gradio 6 serves the app config at `/config`, NOT `/gradio_api/config` (the
+  `/gradio_api` prefix applies to the call endpoints); the endpoint signatures are at
+  `/gradio_api/info`.
+* `gr.ChatInterface(examples=[...])` must be given a list of LISTS when
+  `additional_inputs` is used — a flat list raises at construction time and the Space
+  dies in RUNTIME_ERROR with the traceback in the run log.
+* The run log shows ZeroGPU packing the 3.76 GB of tensors ("ZeroGPU tensors packing")
+  right before the app starts; the model download itself was fast (~300 MB/s).
+
+# space        : ljubobratovicrelja/qwen3.5-2b-magicoder-demo
+# url          : https://huggingface.co/spaces/ljubobratovicrelja/qwen3.5-2b-magicoder-demo
+# domain       : https://ljubobratovicrelja-qwen3-5-2b-magicoder-demo.hf.space
+# runtime stage: RUNNING
+# hardware     : current=zero-a10g requested=zero-a10g
+# domain stage : ljubobratovicrelja-qwen3-5-2b-magicoder-demo.hf.space -> READY
+# endpoints    : 1 named; using 'generate'
+# signature    : [('message', 'str'), ('max_new_tokens', 'float')]
+# call data    : ['Write a Python function that returns the ...', 200]
+
+# prompt       : Write a Python function that returns the sum of the squares of the even numbers in a list.
+# max_new_tokens: 200
+# calling the public API ...
+# latency      : 12.8 s (including any queue wait and cold start)
+# raw payload  : ["```python\ndef square_sum_even(numbers):\n    return sum(x**2 for x in filter(lambda x: x % 2 == 0, numbers))\n```\n\nThe `square_sum_even` function uses a generator expression with the `filter` function to select only the even numbers from the input list and then applies the `sum` function to calculate the sum of their squares.", null]
+
+--- answer ---
+```python
+def square_sum_even(numbers):
+    return sum(x**2 for x in filter(lambda x: x % 2 == 0, numbers))
+```
+
+The `square_sum_even` function uses a generator expression with the `filter` function to select only the even numbers from the input list and then applies the `sum` function to calculate the sum of their squares.

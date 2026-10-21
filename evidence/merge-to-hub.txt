@@ -1,0 +1,136 @@
+======================================================================
+merge-to-hub.txt — P5: the merged, publishable model and its acceptance test
+======================================================================
+date            : 2026-10-21T09:53:09+02:00
+host            : the training host (RTX 3090 Ti 24 GB)
+image           : aiia-docker/training:stage-4  (NGC PyTorch; transformers 5.20, torch 2.14 alpha)
+merged model    : /var/tmp/aiia-hub-merged  (produced by training/merge_lora_for_hub.py)
+source adapter  : /var/tmp/aiia-fullrun/adapter  (62 561 688 B, the stage-4 LoRA)
+
+What this file is
+-----------------
+The acceptance test for route (b) of the P5 decision: instead of publishing the
+adapter and asking the Space to reproduce the trainer's composite→text-only
+re-key, we publish a MERGED text-only model that loads with plain transformers.
+This artifact proves the merge produced such a model, and records one thing the
+test was not designed to find: how much of the tuned arm's terseness is the
+weights and how much is the sampler.
+
+Regenerate with
+---------------
+  # merge (on the training host, from a copy of this repo)
+  docker run --rm -i --gpus all -e HF_HOME=/hf-cache \
+    -v <hf-cache>:/hf-cache -v <work>:/work -v /var/tmp:/var/tmp \
+    --entrypoint python3 aiia-docker/training:stage-4 \
+    /work/merge_lora_for_hub.py --adapter /var/tmp/aiia-fullrun/adapter \
+      --output-dir /var/tmp/aiia-hub-merged --device cpu
+
+  # acceptance (fresh process, plain transformers, no peft, no re-key helper)
+  docker run --rm --gpus all -e HF_HOME=/hf-cache \
+    -v <hf-cache>:/hf-cache -v <work>:/work -v /var/tmp/aiia-hub-merged:/merged:ro \
+    --entrypoint python3 aiia-docker/training:stage-4 /work/verify_merged_model.py
+
+Notes
+-----
+* The `causal_conv1d_fn` / `chunk_gated_delta_rule` fallback warnings the run emits are
+  the known GDN reference-path notices (JOURNAL 2026-10-20), not failures.
+* The test runs BOTH samplers on purpose — see the closing section.
+
+
+
+# merged weights   : 3763687248 bytes
+# merged sha256    : f8afd3b04fac0023dc9f99890e62e94f662526c95f44c3e1606eb284c03d90d8
+/opt/pytorch/ao/torchao/quantization/quant_api.py:1542: SyntaxWarning: invalid escape sequence '\.'
+  """Configuration class for applying different quantization configs to modules or parameters based on their fully qualified names (FQNs).
+W1021 07:52:45.267000 1 torch/utils/_pytree.py:630] <enum 'KernelPreference'> is an Enum subclass and is now natively supported by torch.compile as an opaque value type. Calling register_constant() on Enum subclasses is deprecated and will be an error in a future release.
+W1021 07:52:45.313000 1 torch/utils/_pytree.py:630] <enum 'ScaleCalculationMode'> is an Enum subclass and is now natively supported by torch.compile as an opaque value type. Calling register_constant() on Enum subclasses is deprecated and will be an error in a future release.
+
+Loading weights:   0%|          | 0/320 [00:00<?, ?it/s]
+Loading weights: 100%|██████████| 320/320 [00:00<00:00, 19572.11it/s]
+# class            : Qwen3_5ForCausalLM
+# dtype            : torch.bfloat16
+# config model_type: qwen3_5_text
+# parameters       : 1,881,825,088
+# peft imported    : False   (must be False)
+
+========================================================================
+# sampler: presence_penalty = 0.0  (penalty omitted)
+========================================================================
+
+--- Write a Python function that returns the sum of the squares of the even numbers in a list.
+--- 121 new tokens ---
+```python
+def sum_even_squares(numbers):
+    even_squares_sum = 0
+    for num in numbers:
+        if num % 2 == 0:
+            even_squares_sum += num ** 2
+    return even_squares_sum
+```
+
+The `sum_even_squares` function iterates through the input list of numbers, checking if each number is even. If a number is even, it adds its square to the `even_squares_sum`. After iterating through the list, the function returns the accumulated sum of the squares of the even numbers.
+--- first 110 chars flattened: ```python def sum_even_squares(numbers): even_squares_sum = 0 for num in numbers: if num % 2 == 0: even_square
+
+--- Implement a fibonacci sequence generator.
+--- 220 new tokens ---
+```python
+def fibonacci(n: int) -> list:
+    """
+    Calculate the first n elements in the Fibonacci sequence.
+    
+    Parameters:
+    n (int): The number of Fibonacci sequence elements to generate.
+    
+    Returns:
+    list: A list containing the first n elements of the Fibonacci sequence.
+    """
+    if n <= 1:
+        return [n]
+    
+    a, b = 0, 1
+    sequence = [a, b]
+    for _ in range(2, n):
+        next_val = a + b
+        sequence.append(next_val)
+        a, b = b, next_val
+    
+    return sequence
+```
+
+The provided Python function `fibonacci` calculates the first n elements in the
+--- first 110 chars flattened: ```python def fibonacci(n: int) -> list: """ Calculate the first n elements in the Fibonacci sequence. Paramet
+
+========================================================================
+# sampler: presence_penalty = 2.0  (the benchmark setting)
+========================================================================
+
+--- Write a Python function that returns the sum of the squares of the even numbers in a list.
+--- 112 new tokens ---
+```python
+def square_even_sum(numbers):
+    squared_evens = [x**2 for x in numbers if x % 2 == 0]
+    return sum(squared_evens)
+
+# Test the function with an example list
+list_of_numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+print(square_even_sum(list_of_numbers))  # Output: 28 (sum of squares of even numbers in the list)
+```
+--- first 110 chars flattened: ```python def square_even_sum(numbers): squared_evens = [x**2 for x in numbers if x % 2 == 0] return sum(squar
+
+--- Implement a fibonacci sequence generator.
+--- 116 new tokens ---
+```python
+def generate_fibonacci_sequence(n):
+    sequence = []
+    a, b = 0, 1
+    for _ in range(n):
+        sequence.append(a)
+        a, b = b, a + b
+    return sequence
+
+# Example usage
+n = 10
+print(generate_fibonacci_sequence(n))  # Output: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+```
+--- first 110 chars flattened: ```python def generate_fibonacci_sequence(n): sequence = [] a, b = 0, 1 for _ in range(n): sequence.append(a) 
+EXIT=0

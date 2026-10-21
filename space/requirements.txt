@@ -1,0 +1,6 @@
+# The merged model was produced with transformers 5.20.2 — that is the version that
+# knows the `qwen3_5_text` architecture, so it is pinned rather than floated.
+transformers==5.20.2
+# Floor only: ZeroGPU images ship a supported torch; this just guarantees the 2.8+
+# that ZeroGPU documents.
+torch>=2.8.0

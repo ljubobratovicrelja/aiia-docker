@@ -85,7 +85,7 @@ Each phase ends with something executable that proves it, not with "it should wo
 | **P2** ✅ | Craft demonstration and measured CPU evidence | Verified: every criterion now has an artifact plus a regeneration command in `docs/EVIDENCE.md` (rows 1–10, 14). Cache ordering proved by building three ways: nothing changed → **every step `CACHED`**; app code edited → the pip layer `CACHED` and only `COPY app.py` re-runs; `LLAMA_ARG_CTX_SIZE` changed → the **1.28 GB model layer `CACHED`**, nothing re-downloaded (`evidence/build-cache.txt`). Image sizes and the full layer breakdown measured (`evidence/image-sizes.txt`), with one size decision actually taken rather than asserted — `pip install --no-cache-dir` kept after building the alternative and measuring it: **461.21 MB vs 545.29 MB (+84.1 MB, +18.2 %)** (`evidence/size-experiment.txt`). Fixed prompt measured on CPU through **both** paths: **8.88 tok/s median isolated** (4.280 s, 38 tokens) and **8.49 tok/s through the GUI** (`evidence/bench-cpu.txt`) — the numbers rows 1–2 and the stage-3 baseline quote |
 | **P3** ✅ | GPU build target + Compose override file, and CPU-vs-GPU numbers | Verified: `inference/Dockerfile` builds a `cpu` target (the default — it is the file's last stage) and a `gpu` target (`server-cuda13`) out of **one shared model stage**, so switching targets never re-downloads the 1.28 GB GGUF (the second build's model layer is `CACHED`); `compose.gpu.yaml` is an **override file** — not a profile: a profile can add a service but cannot re-parameterise an existing one — setting `build.target: gpu`, a distinct image tag, `deploy.resources.reservations.devices` and the offload env; the running container holds a real device request (`HostConfig.DeviceRequests`) and offloads **25/25 layers to GPU** (`CUDA0 model buffer size = 1211.05 MiB`, 1589 MiB per `nvidia-smi` **inside** the container); same fixed prompt, same request body: **134.40 tok/s GPU vs 8.88 CPU** (15.14× effective tokens/s; pooled 135.48 vs 8.74, and 15.63× then 15.08× in the two executions kept in the artifact); plain `docker compose up -d --build` still builds and runs the CPU target unchanged |
 | **P4** ✅ | LoRA training stage | Verified and **merged** (`db76964`, PR #4). Adapter produced (62 561 688 B), loss curve recorded (`evidence/loss-curve.png`, three panels), **full run** — 374 optimizer steps, exit 0, no OOM, loss 0.4070 → 0.3359, 4.76 s/step, ~30 min, ~18 GB of 24 GB peak (`evidence/train-run.txt`, [`TRAINING_REPORT.md`](TRAINING_REPORT.md)). **Base vs adapter measured** — 150 generations (10 fixed prompts × 5 sampled runs × 3 arms), adapter against its own base at identical quantization, read in [`BENCHMARK_REPORT.md`](BENCHMARK_REPORT.md): the adapter changed style far more than correctness (~45 % shorter, 0/50 vs 7/50 truncations), one win (`reasoning-1` 2/5 vs 0/5), one regression (`general-context-2`: 4/5 third-person meta-descriptions instead of the requested email), no demonstrated coding gain. **Remaining (not part of P4's own criteria):** plan §6.1 R4's `ast.parse` adherence and HumanEval pass@1 slice. **Host: the RTX 3090 Ti machine, not the Spark** — 24 GB is ample for the bf16 LoRA, it is ~2.4× the GB10 on this model, and the Spark's `/` has only 32 GB free against 311 GB there (the training base image alone is 38.25 GB unpacked). Adapter returns to the Spark for GGUF conversion and serving on the stage-3 stack |
-| **P5** | HF Space | public Space URL answering a request |
+| **P5** ✅ | HF Space | Verified: the merged model is published (`ljubobratovicrelja/qwen3.5-2b-magicoder-lora`, public, LFS oid = local sha256) and a Gradio Space on ZeroGPU answers through its public API — `# runtime stage: RUNNING`, `# hardware: current=zero-a10g`, endpoint `generate`, 7.6 s / 12.8 s per call including cold start (`evidence/hf-space.txt`). The app reproduces the benchmark's sampler exactly, `presence_penalty=2.0` included, because transformers 5.20 dropped the parameter. **Cost, recorded rather than hidden:** the *serving* half needs PRO — HF's free tier refuses compute Spaces on both `cpu-basic` and ZeroGPU (402), so the Space runs on a one-month subscription; the model repo and every other artifact here are free |
 | **P6** | Report (≤6 pp) | **not started — awaiting Relja's call** |
 
 ## 6. Risks and open questions
@@ -249,6 +249,31 @@ answer above was written.** Two of these change the plan; one corrects a claim m
   repo and pushing the app are API operations; the hardware selection may need the UI, which is the one
   step that could require a human click.
 
+**R5 correction — measured on the live account, 2026-10-21: the free Space route is closed.** The
+paragraphs above were right about the docs and wrong about the account. What actually happened:
+
+- `POST /api/repos/create` with `sdk: gradio` → **402**: *"hosting Gradio and Docker Spaces on free
+  cpu-basic requires a PRO subscription"*.
+- The same call with `hardware: "zero-a10g"` (confirmed as the valid ZeroGPU id by the API's own enum of
+  hardware options) → **402**: *"You must be subscribed to PRO to host Spaces with ZeroGPU. If you
+  recently created your account, please wait 30 days or request a community grant."*
+- The Hub's Space-creation UI agrees and is blunter: **Gradio and Docker are both badged "Paid"**; only
+  **Static** is free. Its templates (Gradio-Lite, Transformers.js, React, Svelte, Vue, Blank) all run
+  client-side or not at all.
+
+So the documented "up to 2 Gradio Spaces on ZeroGPU for free accounts in good standing" is not granted
+for this account. What is left: **Static** Spaces, which can host a front end but cannot execute a
+3.8 GB model — Gradio-Lite runs Python in the visitor's browser through Pyodide/WASM (no GPU, no server
+compute), and Transformers.js would need an ONNX export plus transformers.js support for the hybrid
+Gated-DeltaNet architecture, which does not exist. Serving *our* model from a Space therefore needs
+**PRO ($9/month → Gradio on ZeroGPU, 40 GPU-min/day; or Docker on cpu-basic)** or an Inference Endpoint
+(paid per hour). The model itself is already published and needs none of this:
+`ljubobratovicrelja/qwen3.5-2b-magicoder-lora`.
+
+Consequence for the max-grade bullet *"Upload to Hugging Face spaces and use of online API inference"*:
+the **upload** half is satisfied and verifiable today; the **serving** half depends on a paid tier that
+did not exist when the assignment was written. Decision recorded in O3.
+
 **R6 — the Compose keys that actually take effect on this engine.**
 
 Verified by running each against Docker Engine 29.2.1 / Compose v5.0.2 (non-swarm `docker compose up`):
@@ -347,7 +372,7 @@ seeing the result. Suite: `bench/prompts.json`. Harness: `scripts/bench_finetune
 |---|---|---|
 | O1 | Qwen3.5-2B vs a Qwen3-1.7B-class model | **`Qwen3.5-2B-Base`, text-only** (§6.1 R1) |
 | O2 | Corpus slice | **Magicoder-OSS-Instruct-75K, `train[:3000]`** (§6.1 R4); CodeAlpaca-20k if a lighter run is wanted |
-| O3 | HF Space | **yes, via the free route** — Gradio Space on ZeroGPU serving the fine-tuned model through its own API (§6.1 R5). A Docker Space would need PRO and is not required by the spec |
+| O3 | HF Space | **model published; the Space is blocked by the Hub's paywall** — the creation UI badges Gradio and Docker as *Paid* (only Static is free) and both API creation paths return **402**, for `cpu-basic` and for `hardware: zero-a10g` alike, so the free route R5 described is gone for this account (§6.1 R5 correction). **Done:** `ljubobratovicrelja/qwen3.5-2b-magicoder-lora` is public and verified by LFS oid. **Ready:** the Gradio app is written and committed (`space/`), and deploys in minutes on PRO ($9/mo → ZeroGPU, 40 GPU-min/day) or an HF community grant. Static Spaces cannot execute a 3.8 GB model (Gradio-Lite is browser-side Pyodide; Transformers.js would need an ONNX export for the hybrid Gated-DeltaNet architecture, which does not exist) | awaiting Relja's call |
 | O4 | Adapter served, or training kept as a separate stage | **adapter served** if the llama.cpp converter fix is applied; else merged model (§6.1 R2) |
 | O5 | GPU: how the variant is selected | **resolved by P3**: an override file (`compose.gpu.yaml`) rather than a profile — the CPU path stays the default build and the CPU-first portability claim survives, while the GPU variant still reuses the same service, model layer and GUI |
 
