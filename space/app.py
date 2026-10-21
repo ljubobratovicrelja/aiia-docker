@@ -118,10 +118,13 @@ demo = gr.ChatInterface(
     ],
     title="aiia-docker — Qwen3.5-2B + stage-4 LoRA (merged)",
     description=DESCRIPTION,
+    # With additional_inputs present, each example must carry the message *and* a value
+    # for every additional input — a flat list of strings raises at construction time
+    # (learned the hard way: the first deployment crashed here).
     examples=[
-        "Write a Python function that returns the sum of the squares of the even numbers in a list.",
-        "Implement a fibonacci sequence generator.",
-        "Explain in three sentences why the sky is blue.",
+        ["Write a Python function that returns the sum of the squares of the even numbers in a list.", 320],
+        ["Implement a fibonacci sequence generator.", 320],
+        ["Explain in three sentences why the sky is blue.", 256],
     ],
 )
 

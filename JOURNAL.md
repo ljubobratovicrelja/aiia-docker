@@ -311,6 +311,38 @@ silently reported "base vs post-trained" as "the adapter's effect". And the firs
 seed-driven, not arm-driven: at seed 43507 all three arms returned `{}` for the strict-JSON prompt, which
 is a sampling artefact that a single-run benchmark would have published as a model difference.
 
+**Findings (P5 — the HF free tier no longer covers Spaces, and the docs still say it does):** the
+assignment's last bullet is satisfiable without paying on paper and not in practice. Creating a Gradio
+Space through the API returns **402** on the default `cpu-basic` ("hosting Gradio and Docker Spaces on
+free cpu-basic requires a PRO subscription") and **402** again with `hardware: "zero-a10g"`
+("You must be subscribed to PRO to host Spaces with ZeroGPU. If you recently created your account,
+please wait 30 days or request a community grant"), while the Spaces docs still promise *"free personal
+accounts in good standing can still host up to 2 Gradio Spaces running on ZeroGPU"*. The UI agrees with
+the API, not the docs: Gradio and Docker are both badged **Paid**, and only **Static** is free — and
+Static cannot execute a 3.8 GB model (Gradio-Lite runs Python in the visitor's browser via Pyodide;
+Transformers.js would need an ONNX export of a hybrid Gated-DeltaNet architecture that does not exist).
+With PRO the same API call succeeds immediately, so the paywall was the whole blocker. Recorded because
+it is a platform change that an assignment written earlier cannot have anticipated.
+
+**Findings (P5 — four things that cost a deploy cycle each, worth not rediscovering):** (a)
+`gr.ChatInterface(examples=[...])` must be a list of **lists** when `additional_inputs` is used; a flat
+list raises at construction and the Space dies in RUNTIME_ERROR with the traceback only in the run log.
+(b) Gradio 6 serves the app config at `/config`, **not** `/gradio_api/config` — the `/gradio_api` prefix
+applies to the *call* endpoints, and the endpoint signatures live at `/gradio_api/info`, which is the
+robust way to discover how to call a Space. (c) The model must be moved to `cuda` at module level: CUDA
+is emulated outside `@spaces.GPU`, so the 3.76 GB load costs no GPU quota, and the run log shows ZeroGPU
+packing the tensors before the app starts. (d) The served app has to reproduce the benchmark's sampler
+exactly, `presence_penalty=2.0` included — the same weights answer a Fibonacci prompt in 116 tokens with
+the penalty and 220 (capped, with a docstring) without it, so a demo that drops the parameter shows a
+different model than the one that was measured.
+
+**Findings (P5 — the merged model needs none of the training-side machinery):** the published
+checkpoint loads with plain `AutoModelForCausalLM.from_pretrained` — `Qwen3_5ForCausalLM`, bf16, 320/320
+tensors, no `missing`/`unexpected` keys, and `peft` never imported — which is exactly why route (b) was
+chosen over publishing the adapter and asking every consumer to reproduce the composite→text-only
+re-key. The merge is deterministic (a repeat run produced a byte-identical safetensors) and the Hub's
+LFS oid for the uploaded file equals the locally computed sha256.
+
 **Findings (P4 — an evidence generator can fail in the direction of looking fine):** two bugs in the
 smoke record were found only by re-running it and reading the artifact it produced. (a) The VRAM
 sampler wrote through a single redirected stdout, which is block-buffered, so a run short enough to

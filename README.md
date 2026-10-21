@@ -183,6 +183,13 @@ quoted beside it — see the caveats in `docs/EVIDENCE.md`.
 
 ## Status
 
+Stage 5 (P5, *"Upload to Hugging Face spaces and use of online API inference"*) is **live**:
+
+- model: [`ljubobratovicrelja/qwen3.5-2b-magicoder-lora`](https://huggingface.co/ljubobratovicrelja/qwen3.5-2b-magicoder-lora) — the merged, standalone text-only checkpoint (bf16, 3.76 GB), public
+- demo: [`ljubobratovicrelja/qwen3.5-2b-magicoder-demo`](https://huggingface.co/spaces/ljubobratovicrelja/qwen3.5-2b-magicoder-demo) → https://ljubobratovicrelja-qwen3-5-2b-magicoder-demo.hf.space — a Gradio Space on ZeroGPU, serving the chat UI *and* its own API (`gradio_client`, `/gradio_api/call/generate`); `evidence/hf-space.txt` is a call to it from outside, with the runtime and hardware read back
+
+Serving is the one part of this project that needs a paid tier: HF's free tier refuses compute Spaces on `cpu-basic` and ZeroGPU alike (402), so the Space runs on a one-month PRO subscription. Everything else here is free and public.
+
 Stage 4 (P4, the optional "train a model for a few epochs" bullet) adds `training/` — a LoRA SFT of
 the served base model, built and run **only** under the `train` profile and only on the GPU host, so
 the two-container default stack is untouched — plus `scripts/train_lora.sh`, `scripts/plot_loss.py`,
