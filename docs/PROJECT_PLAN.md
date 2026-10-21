@@ -249,6 +249,31 @@ answer above was written.** Two of these change the plan; one corrects a claim m
   repo and pushing the app are API operations; the hardware selection may need the UI, which is the one
   step that could require a human click.
 
+**R5 correction — measured on the live account, 2026-10-21: the free Space route is closed.** The
+paragraphs above were right about the docs and wrong about the account. What actually happened:
+
+- `POST /api/repos/create` with `sdk: gradio` → **402**: *"hosting Gradio and Docker Spaces on free
+  cpu-basic requires a PRO subscription"*.
+- The same call with `hardware: "zero-a10g"` (confirmed as the valid ZeroGPU id by the API's own enum of
+  hardware options) → **402**: *"You must be subscribed to PRO to host Spaces with ZeroGPU. If you
+  recently created your account, please wait 30 days or request a community grant."*
+- The Hub's Space-creation UI agrees and is blunter: **Gradio and Docker are both badged "Paid"**; only
+  **Static** is free. Its templates (Gradio-Lite, Transformers.js, React, Svelte, Vue, Blank) all run
+  client-side or not at all.
+
+So the documented "up to 2 Gradio Spaces on ZeroGPU for free accounts in good standing" is not granted
+for this account. What is left: **Static** Spaces, which can host a front end but cannot execute a
+3.8 GB model — Gradio-Lite runs Python in the visitor's browser through Pyodide/WASM (no GPU, no server
+compute), and Transformers.js would need an ONNX export plus transformers.js support for the hybrid
+Gated-DeltaNet architecture, which does not exist. Serving *our* model from a Space therefore needs
+**PRO ($9/month → Gradio on ZeroGPU, 40 GPU-min/day; or Docker on cpu-basic)** or an Inference Endpoint
+(paid per hour). The model itself is already published and needs none of this:
+`ljubobratovicrelja/qwen3.5-2b-magicoder-lora`.
+
+Consequence for the max-grade bullet *"Upload to Hugging Face spaces and use of online API inference"*:
+the **upload** half is satisfied and verifiable today; the **serving** half depends on a paid tier that
+did not exist when the assignment was written. Decision recorded in O3.
+
 **R6 — the Compose keys that actually take effect on this engine.**
 
 Verified by running each against Docker Engine 29.2.1 / Compose v5.0.2 (non-swarm `docker compose up`):
@@ -347,7 +372,7 @@ seeing the result. Suite: `bench/prompts.json`. Harness: `scripts/bench_finetune
 |---|---|---|
 | O1 | Qwen3.5-2B vs a Qwen3-1.7B-class model | **`Qwen3.5-2B-Base`, text-only** (§6.1 R1) |
 | O2 | Corpus slice | **Magicoder-OSS-Instruct-75K, `train[:3000]`** (§6.1 R4); CodeAlpaca-20k if a lighter run is wanted |
-| O3 | HF Space | **yes, via the free route** — Gradio Space on ZeroGPU serving the fine-tuned model through its own API (§6.1 R5). A Docker Space would need PRO and is not required by the spec |
+| O3 | HF Space | **model published; the Space is blocked by the Hub's paywall** — the creation UI badges Gradio and Docker as *Paid* (only Static is free) and both API creation paths return **402**, for `cpu-basic` and for `hardware: zero-a10g` alike, so the free route R5 described is gone for this account (§6.1 R5 correction). **Done:** `ljubobratovicrelja/qwen3.5-2b-magicoder-lora` is public and verified by LFS oid. **Ready:** the Gradio app is written and committed (`space/`), and deploys in minutes on PRO ($9/mo → ZeroGPU, 40 GPU-min/day) or an HF community grant. Static Spaces cannot execute a 3.8 GB model (Gradio-Lite is browser-side Pyodide; Transformers.js would need an ONNX export for the hybrid Gated-DeltaNet architecture, which does not exist) | awaiting Relja's call |
 | O4 | Adapter served, or training kept as a separate stage | **adapter served** if the llama.cpp converter fix is applied; else merged model (§6.1 R2) |
 | O5 | GPU: how the variant is selected | **resolved by P3**: an override file (`compose.gpu.yaml`) rather than a profile — the CPU path stays the default build and the CPU-first portability claim survives, while the GPU variant still reuses the same service, model layer and GUI |
 
