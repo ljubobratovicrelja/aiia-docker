@@ -1,0 +1,1107 @@
+# Held-out code for perplexity (bench_finetune.sh).
+# Source: CPython v3.12.0, concatenation of `Lib/heapq.py` and `Lib/textwrap.py`
+#   Lib/heapq.py  (git blob 2fd9d1ff4bf827b4c919253be98a7ee0c3f7b829, 23023 bytes)
+#   Lib/textwrap.py  (git blob 98bedd27ea3a11995e2bf81a115df999767dc134, 19718 bytes)
+# Retrieved from https://raw.githubusercontent.com/python/cpython/v3.12.0/<path>
+# Licence: Python Software Foundation License (PSF-2.0), https://docs.python.org/3/license.html
+# Held out: the stage-4 draw was the FIRST 20 000 records of Magicoder-OSS-Instruct
+# (synthetic code instructions), so raw stdlib sources are outside it.
+
+"""Heap queue algorithm (a.k.a. priority queue).
+
+Heaps are arrays for which a[k] <= a[2*k+1] and a[k] <= a[2*k+2] for
+all k, counting elements from 0.  For the sake of comparison,
+non-existing elements are considered to be infinite.  The interesting
+property of a heap is that a[0] is always its smallest element.
+
+Usage:
+
+heap = []            # creates an empty heap
+heappush(heap, item) # pushes a new item on the heap
+item = heappop(heap) # pops the smallest item from the heap
+item = heap[0]       # smallest item on the heap without popping it
+heapify(x)           # transforms list into a heap, in-place, in linear time
+item = heappushpop(heap, item) # pushes a new item and then returns
+                               # the smallest item; the heap size is unchanged
+item = heapreplace(heap, item) # pops and returns smallest item, and adds
+                               # new item; the heap size is unchanged
+
+Our API differs from textbook heap algorithms as follows:
+
+- We use 0-based indexing.  This makes the relationship between the
+  index for a node and the indexes for its children slightly less
+  obvious, but is more suitable since Python uses 0-based indexing.
+
+- Our heappop() method returns the smallest item, not the largest.
+
+These two make it possible to view the heap as a regular Python list
+without surprises: heap[0] is the smallest item, and heap.sort()
+maintains the heap invariant!
+"""
+
+# Original code by Kevin O'Connor, augmented by Tim Peters and Raymond Hettinger
+
+__about__ = """Heap queues
+
+[explanation by François Pinard]
+
+Heaps are arrays for which a[k] <= a[2*k+1] and a[k] <= a[2*k+2] for
+all k, counting elements from 0.  For the sake of comparison,
+non-existing elements are considered to be infinite.  The interesting
+property of a heap is that a[0] is always its smallest element.
+
+The strange invariant above is meant to be an efficient memory
+representation for a tournament.  The numbers below are `k', not a[k]:
+
+                                   0
+
+                  1                                 2
+
+          3               4                5               6
+
+      7       8       9       10      11      12      13      14
+
+    15 16   17 18   19 20   21 22   23 24   25 26   27 28   29 30
+
+
+In the tree above, each cell `k' is topping `2*k+1' and `2*k+2'.  In
+a usual binary tournament we see in sports, each cell is the winner
+over the two cells it tops, and we can trace the winner down the tree
+to see all opponents s/he had.  However, in many computer applications
+of such tournaments, we do not need to trace the history of a winner.
+To be more memory efficient, when a winner is promoted, we try to
+replace it by something else at a lower level, and the rule becomes
+that a cell and the two cells it tops contain three different items,
+but the top cell "wins" over the two topped cells.
+
+If this heap invariant is protected at all time, index 0 is clearly
+the overall winner.  The simplest algorithmic way to remove it and
+find the "next" winner is to move some loser (let's say cell 30 in the
+diagram above) into the 0 position, and then percolate this new 0 down
+the tree, exchanging values, until the invariant is re-established.
+This is clearly logarithmic on the total number of items in the tree.
+By iterating over all items, you get an O(n ln n) sort.
+
+A nice feature of this sort is that you can efficiently insert new
+items while the sort is going on, provided that the inserted items are
+not "better" than the last 0'th element you extracted.  This is
+especially useful in simulation contexts, where the tree holds all
+incoming events, and the "win" condition means the smallest scheduled
+time.  When an event schedule other events for execution, they are
+scheduled into the future, so they can easily go into the heap.  So, a
+heap is a good structure for implementing schedulers (this is what I
+used for my MIDI sequencer :-).
+
+Various structures for implementing schedulers have been extensively
+studied, and heaps are good for this, as they are reasonably speedy,
+the speed is almost constant, and the worst case is not much different
+than the average case.  However, there are other representations which
+are more efficient overall, yet the worst cases might be terrible.
+
+Heaps are also very useful in big disk sorts.  You most probably all
+know that a big sort implies producing "runs" (which are pre-sorted
+sequences, which size is usually related to the amount of CPU memory),
+followed by a merging passes for these runs, which merging is often
+very cleverly organised[1].  It is very important that the initial
+sort produces the longest runs possible.  Tournaments are a good way
+to that.  If, using all the memory available to hold a tournament, you
+replace and percolate items that happen to fit the current run, you'll
+produce runs which are twice the size of the memory for random input,
+and much better for input fuzzily ordered.
+
+Moreover, if you output the 0'th item on disk and get an input which
+may not fit in the current tournament (because the value "wins" over
+the last output value), it cannot fit in the heap, so the size of the
+heap decreases.  The freed memory could be cleverly reused immediately
+for progressively building a second heap, which grows at exactly the
+same rate the first heap is melting.  When the first heap completely
+vanishes, you switch heaps and start a new run.  Clever and quite
+effective!
+
+In a word, heaps are useful memory structures to know.  I use them in
+a few applications, and I think it is good to keep a `heap' module
+around. :-)
+
+--------------------
+[1] The disk balancing algorithms which are current, nowadays, are
+more annoying than clever, and this is a consequence of the seeking
+capabilities of the disks.  On devices which cannot seek, like big
+tape drives, the story was quite different, and one had to be very
+clever to ensure (far in advance) that each tape movement will be the
+most effective possible (that is, will best participate at
+"progressing" the merge).  Some tapes were even able to read
+backwards, and this was also used to avoid the rewinding time.
+Believe me, real good tape sorts were quite spectacular to watch!
+From all times, sorting has always been a Great Art! :-)
+"""
+
+__all__ = ['heappush', 'heappop', 'heapify', 'heapreplace', 'merge',
+           'nlargest', 'nsmallest', 'heappushpop']
+
+def heappush(heap, item):
+    """Push item onto heap, maintaining the heap invariant."""
+    heap.append(item)
+    _siftdown(heap, 0, len(heap)-1)
+
+def heappop(heap):
+    """Pop the smallest item off the heap, maintaining the heap invariant."""
+    lastelt = heap.pop()    # raises appropriate IndexError if heap is empty
+    if heap:
+        returnitem = heap[0]
+        heap[0] = lastelt
+        _siftup(heap, 0)
+        return returnitem
+    return lastelt
+
+def heapreplace(heap, item):
+    """Pop and return the current smallest value, and add the new item.
+
+    This is more efficient than heappop() followed by heappush(), and can be
+    more appropriate when using a fixed-size heap.  Note that the value
+    returned may be larger than item!  That constrains reasonable uses of
+    this routine unless written as part of a conditional replacement:
+
+        if item > heap[0]:
+            item = heapreplace(heap, item)
+    """
+    returnitem = heap[0]    # raises appropriate IndexError if heap is empty
+    heap[0] = item
+    _siftup(heap, 0)
+    return returnitem
+
+def heappushpop(heap, item):
+    """Fast version of a heappush followed by a heappop."""
+    if heap and heap[0] < item:
+        item, heap[0] = heap[0], item
+        _siftup(heap, 0)
+    return item
+
+def heapify(x):
+    """Transform list into a heap, in-place, in O(len(x)) time."""
+    n = len(x)
+    # Transform bottom-up.  The largest index there's any point to looking at
+    # is the largest with a child index in-range, so must have 2*i + 1 < n,
+    # or i < (n-1)/2.  If n is even = 2*j, this is (2*j-1)/2 = j-1/2 so
+    # j-1 is the largest, which is n//2 - 1.  If n is odd = 2*j+1, this is
+    # (2*j+1-1)/2 = j so j-1 is the largest, and that's again n//2-1.
+    for i in reversed(range(n//2)):
+        _siftup(x, i)
+
+def _heappop_max(heap):
+    """Maxheap version of a heappop."""
+    lastelt = heap.pop()    # raises appropriate IndexError if heap is empty
+    if heap:
+        returnitem = heap[0]
+        heap[0] = lastelt
+        _siftup_max(heap, 0)
+        return returnitem
+    return lastelt
+
+def _heapreplace_max(heap, item):
+    """Maxheap version of a heappop followed by a heappush."""
+    returnitem = heap[0]    # raises appropriate IndexError if heap is empty
+    heap[0] = item
+    _siftup_max(heap, 0)
+    return returnitem
+
+def _heapify_max(x):
+    """Transform list into a maxheap, in-place, in O(len(x)) time."""
+    n = len(x)
+    for i in reversed(range(n//2)):
+        _siftup_max(x, i)
+
+# 'heap' is a heap at all indices >= startpos, except possibly for pos.  pos
+# is the index of a leaf with a possibly out-of-order value.  Restore the
+# heap invariant.
+def _siftdown(heap, startpos, pos):
+    newitem = heap[pos]
+    # Follow the path to the root, moving parents down until finding a place
+    # newitem fits.
+    while pos > startpos:
+        parentpos = (pos - 1) >> 1
+        parent = heap[parentpos]
+        if newitem < parent:
+            heap[pos] = parent
+            pos = parentpos
+            continue
+        break
+    heap[pos] = newitem
+
+# The child indices of heap index pos are already heaps, and we want to make
+# a heap at index pos too.  We do this by bubbling the smaller child of
+# pos up (and so on with that child's children, etc) until hitting a leaf,
+# then using _siftdown to move the oddball originally at index pos into place.
+#
+# We *could* break out of the loop as soon as we find a pos where newitem <=
+# both its children, but turns out that's not a good idea, and despite that
+# many books write the algorithm that way.  During a heap pop, the last array
+# element is sifted in, and that tends to be large, so that comparing it
+# against values starting from the root usually doesn't pay (= usually doesn't
+# get us out of the loop early).  See Knuth, Volume 3, where this is
+# explained and quantified in an exercise.
+#
+# Cutting the # of comparisons is important, since these routines have no
+# way to extract "the priority" from an array element, so that intelligence
+# is likely to be hiding in custom comparison methods, or in array elements
+# storing (priority, record) tuples.  Comparisons are thus potentially
+# expensive.
+#
+# On random arrays of length 1000, making this change cut the number of
+# comparisons made by heapify() a little, and those made by exhaustive
+# heappop() a lot, in accord with theory.  Here are typical results from 3
+# runs (3 just to demonstrate how small the variance is):
+#
+# Compares needed by heapify     Compares needed by 1000 heappops
+# --------------------------     --------------------------------
+# 1837 cut to 1663               14996 cut to 8680
+# 1855 cut to 1659               14966 cut to 8678
+# 1847 cut to 1660               15024 cut to 8703
+#
+# Building the heap by using heappush() 1000 times instead required
+# 2198, 2148, and 2219 compares:  heapify() is more efficient, when
+# you can use it.
+#
+# The total compares needed by list.sort() on the same lists were 8627,
+# 8627, and 8632 (this should be compared to the sum of heapify() and
+# heappop() compares):  list.sort() is (unsurprisingly!) more efficient
+# for sorting.
+
+def _siftup(heap, pos):
+    endpos = len(heap)
+    startpos = pos
+    newitem = heap[pos]
+    # Bubble up the smaller child until hitting a leaf.
+    childpos = 2*pos + 1    # leftmost child position
+    while childpos < endpos:
+        # Set childpos to index of smaller child.
+        rightpos = childpos + 1
+        if rightpos < endpos and not heap[childpos] < heap[rightpos]:
+            childpos = rightpos
+        # Move the smaller child up.
+        heap[pos] = heap[childpos]
+        pos = childpos
+        childpos = 2*pos + 1
+    # The leaf at pos is empty now.  Put newitem there, and bubble it up
+    # to its final resting place (by sifting its parents down).
+    heap[pos] = newitem
+    _siftdown(heap, startpos, pos)
+
+def _siftdown_max(heap, startpos, pos):
+    'Maxheap variant of _siftdown'
+    newitem = heap[pos]
+    # Follow the path to the root, moving parents down until finding a place
+    # newitem fits.
+    while pos > startpos:
+        parentpos = (pos - 1) >> 1
+        parent = heap[parentpos]
+        if parent < newitem:
+            heap[pos] = parent
+            pos = parentpos
+            continue
+        break
+    heap[pos] = newitem
+
+def _siftup_max(heap, pos):
+    'Maxheap variant of _siftup'
+    endpos = len(heap)
+    startpos = pos
+    newitem = heap[pos]
+    # Bubble up the larger child until hitting a leaf.
+    childpos = 2*pos + 1    # leftmost child position
+    while childpos < endpos:
+        # Set childpos to index of larger child.
+        rightpos = childpos + 1
+        if rightpos < endpos and not heap[rightpos] < heap[childpos]:
+            childpos = rightpos
+        # Move the larger child up.
+        heap[pos] = heap[childpos]
+        pos = childpos
+        childpos = 2*pos + 1
+    # The leaf at pos is empty now.  Put newitem there, and bubble it up
+    # to its final resting place (by sifting its parents down).
+    heap[pos] = newitem
+    _siftdown_max(heap, startpos, pos)
+
+def merge(*iterables, key=None, reverse=False):
+    '''Merge multiple sorted inputs into a single sorted output.
+
+    Similar to sorted(itertools.chain(*iterables)) but returns a generator,
+    does not pull the data into memory all at once, and assumes that each of
+    the input streams is already sorted (smallest to largest).
+
+    >>> list(merge([1,3,5,7], [0,2,4,8], [5,10,15,20], [], [25]))
+    [0, 1, 2, 3, 4, 5, 5, 7, 8, 10, 15, 20, 25]
+
+    If *key* is not None, applies a key function to each element to determine
+    its sort order.
+
+    >>> list(merge(['dog', 'horse'], ['cat', 'fish', 'kangaroo'], key=len))
+    ['dog', 'cat', 'fish', 'horse', 'kangaroo']
+
+    '''
+
+    h = []
+    h_append = h.append
+
+    if reverse:
+        _heapify = _heapify_max
+        _heappop = _heappop_max
+        _heapreplace = _heapreplace_max
+        direction = -1
+    else:
+        _heapify = heapify
+        _heappop = heappop
+        _heapreplace = heapreplace
+        direction = 1
+
+    if key is None:
+        for order, it in enumerate(map(iter, iterables)):
+            try:
+                next = it.__next__
+                h_append([next(), order * direction, next])
+            except StopIteration:
+                pass
+        _heapify(h)
+        while len(h) > 1:
+            try:
+                while True:
+                    value, order, next = s = h[0]
+                    yield value
+                    s[0] = next()           # raises StopIteration when exhausted
+                    _heapreplace(h, s)      # restore heap condition
+            except StopIteration:
+                _heappop(h)                 # remove empty iterator
+        if h:
+            # fast case when only a single iterator remains
+            value, order, next = h[0]
+            yield value
+            yield from next.__self__
+        return
+
+    for order, it in enumerate(map(iter, iterables)):
+        try:
+            next = it.__next__
+            value = next()
+            h_append([key(value), order * direction, value, next])
+        except StopIteration:
+            pass
+    _heapify(h)
+    while len(h) > 1:
+        try:
+            while True:
+                key_value, order, value, next = s = h[0]
+                yield value
+                value = next()
+                s[0] = key(value)
+                s[2] = value
+                _heapreplace(h, s)
+        except StopIteration:
+            _heappop(h)
+    if h:
+        key_value, order, value, next = h[0]
+        yield value
+        yield from next.__self__
+
+
+# Algorithm notes for nlargest() and nsmallest()
+# ==============================================
+#
+# Make a single pass over the data while keeping the k most extreme values
+# in a heap.  Memory consumption is limited to keeping k values in a list.
+#
+# Measured performance for random inputs:
+#
+#                                   number of comparisons
+#    n inputs     k-extreme values  (average of 5 trials)   % more than min()
+# -------------   ----------------  ---------------------   -----------------
+#      1,000           100                  3,317               231.7%
+#     10,000           100                 14,046                40.5%
+#    100,000           100                105,749                 5.7%
+#  1,000,000           100              1,007,751                 0.8%
+# 10,000,000           100             10,009,401                 0.1%
+#
+# Theoretical number of comparisons for k smallest of n random inputs:
+#
+# Step   Comparisons                  Action
+# ----   --------------------------   ---------------------------
+#  1     1.66 * k                     heapify the first k-inputs
+#  2     n - k                        compare remaining elements to top of heap
+#  3     k * (1 + lg2(k)) * ln(n/k)   replace the topmost value on the heap
+#  4     k * lg2(k) - (k/2)           final sort of the k most extreme values
+#
+# Combining and simplifying for a rough estimate gives:
+#
+#        comparisons = n + k * (log(k, 2) * log(n/k) + log(k, 2) + log(n/k))
+#
+# Computing the number of comparisons for step 3:
+# -----------------------------------------------
+# * For the i-th new value from the iterable, the probability of being in the
+#   k most extreme values is k/i.  For example, the probability of the 101st
+#   value seen being in the 100 most extreme values is 100/101.
+# * If the value is a new extreme value, the cost of inserting it into the
+#   heap is 1 + log(k, 2).
+# * The probability times the cost gives:
+#            (k/i) * (1 + log(k, 2))
+# * Summing across the remaining n-k elements gives:
+#            sum((k/i) * (1 + log(k, 2)) for i in range(k+1, n+1))
+# * This reduces to:
+#            (H(n) - H(k)) * k * (1 + log(k, 2))
+# * Where H(n) is the n-th harmonic number estimated by:
+#            gamma = 0.5772156649
+#            H(n) = log(n, e) + gamma + 1 / (2 * n)
+#   http://en.wikipedia.org/wiki/Harmonic_series_(mathematics)#Rate_of_divergence
+# * Substituting the H(n) formula:
+#            comparisons = k * (1 + log(k, 2)) * (log(n/k, e) + (1/n - 1/k) / 2)
+#
+# Worst-case for step 3:
+# ----------------------
+# In the worst case, the input data is reversed sorted so that every new element
+# must be inserted in the heap:
+#
+#             comparisons = 1.66 * k + log(k, 2) * (n - k)
+#
+# Alternative Algorithms
+# ----------------------
+# Other algorithms were not used because they:
+# 1) Took much more auxiliary memory,
+# 2) Made multiple passes over the data.
+# 3) Made more comparisons in common cases (small k, large n, semi-random input).
+# See the more detailed comparison of approach at:
+# http://code.activestate.com/recipes/577573-compare-algorithms-for-heapqsmallest
+
+def nsmallest(n, iterable, key=None):
+    """Find the n smallest elements in a dataset.
+
+    Equivalent to:  sorted(iterable, key=key)[:n]
+    """
+
+    # Short-cut for n==1 is to use min()
+    if n == 1:
+        it = iter(iterable)
+        sentinel = object()
+        result = min(it, default=sentinel, key=key)
+        return [] if result is sentinel else [result]
+
+    # When n>=size, it's faster to use sorted()
+    try:
+        size = len(iterable)
+    except (TypeError, AttributeError):
+        pass
+    else:
+        if n >= size:
+            return sorted(iterable, key=key)[:n]
+
+    # When key is none, use simpler decoration
+    if key is None:
+        it = iter(iterable)
+        # put the range(n) first so that zip() doesn't
+        # consume one too many elements from the iterator
+        result = [(elem, i) for i, elem in zip(range(n), it)]
+        if not result:
+            return result
+        _heapify_max(result)
+        top = result[0][0]
+        order = n
+        _heapreplace = _heapreplace_max
+        for elem in it:
+            if elem < top:
+                _heapreplace(result, (elem, order))
+                top, _order = result[0]
+                order += 1
+        result.sort()
+        return [elem for (elem, order) in result]
+
+    # General case, slowest method
+    it = iter(iterable)
+    result = [(key(elem), i, elem) for i, elem in zip(range(n), it)]
+    if not result:
+        return result
+    _heapify_max(result)
+    top = result[0][0]
+    order = n
+    _heapreplace = _heapreplace_max
+    for elem in it:
+        k = key(elem)
+        if k < top:
+            _heapreplace(result, (k, order, elem))
+            top, _order, _elem = result[0]
+            order += 1
+    result.sort()
+    return [elem for (k, order, elem) in result]
+
+def nlargest(n, iterable, key=None):
+    """Find the n largest elements in a dataset.
+
+    Equivalent to:  sorted(iterable, key=key, reverse=True)[:n]
+    """
+
+    # Short-cut for n==1 is to use max()
+    if n == 1:
+        it = iter(iterable)
+        sentinel = object()
+        result = max(it, default=sentinel, key=key)
+        return [] if result is sentinel else [result]
+
+    # When n>=size, it's faster to use sorted()
+    try:
+        size = len(iterable)
+    except (TypeError, AttributeError):
+        pass
+    else:
+        if n >= size:
+            return sorted(iterable, key=key, reverse=True)[:n]
+
+    # When key is none, use simpler decoration
+    if key is None:
+        it = iter(iterable)
+        result = [(elem, i) for i, elem in zip(range(0, -n, -1), it)]
+        if not result:
+            return result
+        heapify(result)
+        top = result[0][0]
+        order = -n
+        _heapreplace = heapreplace
+        for elem in it:
+            if top < elem:
+                _heapreplace(result, (elem, order))
+                top, _order = result[0]
+                order -= 1
+        result.sort(reverse=True)
+        return [elem for (elem, order) in result]
+
+    # General case, slowest method
+    it = iter(iterable)
+    result = [(key(elem), i, elem) for i, elem in zip(range(0, -n, -1), it)]
+    if not result:
+        return result
+    heapify(result)
+    top = result[0][0]
+    order = -n
+    _heapreplace = heapreplace
+    for elem in it:
+        k = key(elem)
+        if top < k:
+            _heapreplace(result, (k, order, elem))
+            top, _order, _elem = result[0]
+            order -= 1
+    result.sort(reverse=True)
+    return [elem for (k, order, elem) in result]
+
+# If available, use C implementation
+try:
+    from _heapq import *
+except ImportError:
+    pass
+try:
+    from _heapq import _heapreplace_max
+except ImportError:
+    pass
+try:
+    from _heapq import _heapify_max
+except ImportError:
+    pass
+try:
+    from _heapq import _heappop_max
+except ImportError:
+    pass
+
+
+if __name__ == "__main__":
+
+    import doctest # pragma: no cover
+    print(doctest.testmod()) # pragma: no cover
+
+
+
+"""Text wrapping and filling.
+"""
+
+# Copyright (C) 1999-2001 Gregory P. Ward.
+# Copyright (C) 2002, 2003 Python Software Foundation.
+# Written by Greg Ward <gward@python.net>
+
+import re
+
+__all__ = ['TextWrapper', 'wrap', 'fill', 'dedent', 'indent', 'shorten']
+
+# Hardcode the recognized whitespace characters to the US-ASCII
+# whitespace characters.  The main reason for doing this is that
+# some Unicode spaces (like \u00a0) are non-breaking whitespaces.
+_whitespace = '\t\n\x0b\x0c\r '
+
+class TextWrapper:
+    """
+    Object for wrapping/filling text.  The public interface consists of
+    the wrap() and fill() methods; the other methods are just there for
+    subclasses to override in order to tweak the default behaviour.
+    If you want to completely replace the main wrapping algorithm,
+    you'll probably have to override _wrap_chunks().
+
+    Several instance attributes control various aspects of wrapping:
+      width (default: 70)
+        the maximum width of wrapped lines (unless break_long_words
+        is false)
+      initial_indent (default: "")
+        string that will be prepended to the first line of wrapped
+        output.  Counts towards the line's width.
+      subsequent_indent (default: "")
+        string that will be prepended to all lines save the first
+        of wrapped output; also counts towards each line's width.
+      expand_tabs (default: true)
+        Expand tabs in input text to spaces before further processing.
+        Each tab will become 0 .. 'tabsize' spaces, depending on its position
+        in its line.  If false, each tab is treated as a single character.
+      tabsize (default: 8)
+        Expand tabs in input text to 0 .. 'tabsize' spaces, unless
+        'expand_tabs' is false.
+      replace_whitespace (default: true)
+        Replace all whitespace characters in the input text by spaces
+        after tab expansion.  Note that if expand_tabs is false and
+        replace_whitespace is true, every tab will be converted to a
+        single space!
+      fix_sentence_endings (default: false)
+        Ensure that sentence-ending punctuation is always followed
+        by two spaces.  Off by default because the algorithm is
+        (unavoidably) imperfect.
+      break_long_words (default: true)
+        Break words longer than 'width'.  If false, those words will not
+        be broken, and some lines might be longer than 'width'.
+      break_on_hyphens (default: true)
+        Allow breaking hyphenated words. If true, wrapping will occur
+        preferably on whitespaces and right after hyphens part of
+        compound words.
+      drop_whitespace (default: true)
+        Drop leading and trailing whitespace from lines.
+      max_lines (default: None)
+        Truncate wrapped lines.
+      placeholder (default: ' [...]')
+        Append to the last line of truncated text.
+    """
+
+    unicode_whitespace_trans = dict.fromkeys(map(ord, _whitespace), ord(' '))
+
+    # This funky little regex is just the trick for splitting
+    # text up into word-wrappable chunks.  E.g.
+    #   "Hello there -- you goof-ball, use the -b option!"
+    # splits into
+    #   Hello/ /there/ /--/ /you/ /goof-/ball,/ /use/ /the/ /-b/ /option!
+    # (after stripping out empty strings).
+    word_punct = r'[\w!"\'&.,?]'
+    letter = r'[^\d\W]'
+    whitespace = r'[%s]' % re.escape(_whitespace)
+    nowhitespace = '[^' + whitespace[1:]
+    wordsep_re = re.compile(r'''
+        ( # any whitespace
+          %(ws)s+
+        | # em-dash between words
+          (?<=%(wp)s) -{2,} (?=\w)
+        | # word, possibly hyphenated
+          %(nws)s+? (?:
+            # hyphenated word
+              -(?: (?<=%(lt)s{2}-) | (?<=%(lt)s-%(lt)s-))
+              (?= %(lt)s -? %(lt)s)
+            | # end of word
+              (?=%(ws)s|\Z)
+            | # em-dash
+              (?<=%(wp)s) (?=-{2,}\w)
+            )
+        )''' % {'wp': word_punct, 'lt': letter,
+                'ws': whitespace, 'nws': nowhitespace},
+        re.VERBOSE)
+    del word_punct, letter, nowhitespace
+
+    # This less funky little regex just split on recognized spaces. E.g.
+    #   "Hello there -- you goof-ball, use the -b option!"
+    # splits into
+    #   Hello/ /there/ /--/ /you/ /goof-ball,/ /use/ /the/ /-b/ /option!/
+    wordsep_simple_re = re.compile(r'(%s+)' % whitespace)
+    del whitespace
+
+    # XXX this is not locale- or charset-aware -- string.lowercase
+    # is US-ASCII only (and therefore English-only)
+    sentence_end_re = re.compile(r'[a-z]'             # lowercase letter
+                                 r'[\.\!\?]'          # sentence-ending punct.
+                                 r'[\"\']?'           # optional end-of-quote
+                                 r'\Z')               # end of chunk
+
+    def __init__(self,
+                 width=70,
+                 initial_indent="",
+                 subsequent_indent="",
+                 expand_tabs=True,
+                 replace_whitespace=True,
+                 fix_sentence_endings=False,
+                 break_long_words=True,
+                 drop_whitespace=True,
+                 break_on_hyphens=True,
+                 tabsize=8,
+                 *,
+                 max_lines=None,
+                 placeholder=' [...]'):
+        self.width = width
+        self.initial_indent = initial_indent
+        self.subsequent_indent = subsequent_indent
+        self.expand_tabs = expand_tabs
+        self.replace_whitespace = replace_whitespace
+        self.fix_sentence_endings = fix_sentence_endings
+        self.break_long_words = break_long_words
+        self.drop_whitespace = drop_whitespace
+        self.break_on_hyphens = break_on_hyphens
+        self.tabsize = tabsize
+        self.max_lines = max_lines
+        self.placeholder = placeholder
+
+
+    # -- Private methods -----------------------------------------------
+    # (possibly useful for subclasses to override)
+
+    def _munge_whitespace(self, text):
+        """_munge_whitespace(text : string) -> string
+
+        Munge whitespace in text: expand tabs and convert all other
+        whitespace characters to spaces.  Eg. " foo\\tbar\\n\\nbaz"
+        becomes " foo    bar  baz".
+        """
+        if self.expand_tabs:
+            text = text.expandtabs(self.tabsize)
+        if self.replace_whitespace:
+            text = text.translate(self.unicode_whitespace_trans)
+        return text
+
+
+    def _split(self, text):
+        """_split(text : string) -> [string]
+
+        Split the text to wrap into indivisible chunks.  Chunks are
+        not quite the same as words; see _wrap_chunks() for full
+        details.  As an example, the text
+          Look, goof-ball -- use the -b option!
+        breaks into the following chunks:
+          'Look,', ' ', 'goof-', 'ball', ' ', '--', ' ',
+          'use', ' ', 'the', ' ', '-b', ' ', 'option!'
+        if break_on_hyphens is True, or in:
+          'Look,', ' ', 'goof-ball', ' ', '--', ' ',
+          'use', ' ', 'the', ' ', '-b', ' ', option!'
+        otherwise.
+        """
+        if self.break_on_hyphens is True:
+            chunks = self.wordsep_re.split(text)
+        else:
+            chunks = self.wordsep_simple_re.split(text)
+        chunks = [c for c in chunks if c]
+        return chunks
+
+    def _fix_sentence_endings(self, chunks):
+        """_fix_sentence_endings(chunks : [string])
+
+        Correct for sentence endings buried in 'chunks'.  Eg. when the
+        original text contains "... foo.\\nBar ...", munge_whitespace()
+        and split() will convert that to [..., "foo.", " ", "Bar", ...]
+        which has one too few spaces; this method simply changes the one
+        space to two.
+        """
+        i = 0
+        patsearch = self.sentence_end_re.search
+        while i < len(chunks)-1:
+            if chunks[i+1] == " " and patsearch(chunks[i]):
+                chunks[i+1] = "  "
+                i += 2
+            else:
+                i += 1
+
+    def _handle_long_word(self, reversed_chunks, cur_line, cur_len, width):
+        """_handle_long_word(chunks : [string],
+                             cur_line : [string],
+                             cur_len : int, width : int)
+
+        Handle a chunk of text (most likely a word, not whitespace) that
+        is too long to fit in any line.
+        """
+        # Figure out when indent is larger than the specified width, and make
+        # sure at least one character is stripped off on every pass
+        if width < 1:
+            space_left = 1
+        else:
+            space_left = width - cur_len
+
+        # If we're allowed to break long words, then do so: put as much
+        # of the next chunk onto the current line as will fit.
+        if self.break_long_words:
+            end = space_left
+            chunk = reversed_chunks[-1]
+            if self.break_on_hyphens and len(chunk) > space_left:
+                # break after last hyphen, but only if there are
+                # non-hyphens before it
+                hyphen = chunk.rfind('-', 0, space_left)
+                if hyphen > 0 and any(c != '-' for c in chunk[:hyphen]):
+                    end = hyphen + 1
+            cur_line.append(chunk[:end])
+            reversed_chunks[-1] = chunk[end:]
+
+        # Otherwise, we have to preserve the long word intact.  Only add
+        # it to the current line if there's nothing already there --
+        # that minimizes how much we violate the width constraint.
+        elif not cur_line:
+            cur_line.append(reversed_chunks.pop())
+
+        # If we're not allowed to break long words, and there's already
+        # text on the current line, do nothing.  Next time through the
+        # main loop of _wrap_chunks(), we'll wind up here again, but
+        # cur_len will be zero, so the next line will be entirely
+        # devoted to the long word that we can't handle right now.
+
+    def _wrap_chunks(self, chunks):
+        """_wrap_chunks(chunks : [string]) -> [string]
+
+        Wrap a sequence of text chunks and return a list of lines of
+        length 'self.width' or less.  (If 'break_long_words' is false,
+        some lines may be longer than this.)  Chunks correspond roughly
+        to words and the whitespace between them: each chunk is
+        indivisible (modulo 'break_long_words'), but a line break can
+        come between any two chunks.  Chunks should not have internal
+        whitespace; ie. a chunk is either all whitespace or a "word".
+        Whitespace chunks will be removed from the beginning and end of
+        lines, but apart from that whitespace is preserved.
+        """
+        lines = []
+        if self.width <= 0:
+            raise ValueError("invalid width %r (must be > 0)" % self.width)
+        if self.max_lines is not None:
+            if self.max_lines > 1:
+                indent = self.subsequent_indent
+            else:
+                indent = self.initial_indent
+            if len(indent) + len(self.placeholder.lstrip()) > self.width:
+                raise ValueError("placeholder too large for max width")
+
+        # Arrange in reverse order so items can be efficiently popped
+        # from a stack of chucks.
+        chunks.reverse()
+
+        while chunks:
+
+            # Start the list of chunks that will make up the current line.
+            # cur_len is just the length of all the chunks in cur_line.
+            cur_line = []
+            cur_len = 0
+
+            # Figure out which static string will prefix this line.
+            if lines:
+                indent = self.subsequent_indent
+            else:
+                indent = self.initial_indent
+
+            # Maximum width for this line.
+            width = self.width - len(indent)
+
+            # First chunk on line is whitespace -- drop it, unless this
+            # is the very beginning of the text (ie. no lines started yet).
+            if self.drop_whitespace and chunks[-1].strip() == '' and lines:
+                del chunks[-1]
+
+            while chunks:
+                l = len(chunks[-1])
+
+                # Can at least squeeze this chunk onto the current line.
+                if cur_len + l <= width:
+                    cur_line.append(chunks.pop())
+                    cur_len += l
+
+                # Nope, this line is full.
+                else:
+                    break
+
+            # The current line is full, and the next chunk is too big to
+            # fit on *any* line (not just this one).
+            if chunks and len(chunks[-1]) > width:
+                self._handle_long_word(chunks, cur_line, cur_len, width)
+                cur_len = sum(map(len, cur_line))
+
+            # If the last chunk on this line is all whitespace, drop it.
+            if self.drop_whitespace and cur_line and cur_line[-1].strip() == '':
+                cur_len -= len(cur_line[-1])
+                del cur_line[-1]
+
+            if cur_line:
+                if (self.max_lines is None or
+                    len(lines) + 1 < self.max_lines or
+                    (not chunks or
+                     self.drop_whitespace and
+                     len(chunks) == 1 and
+                     not chunks[0].strip()) and cur_len <= width):
+                    # Convert current line back to a string and store it in
+                    # list of all lines (return value).
+                    lines.append(indent + ''.join(cur_line))
+                else:
+                    while cur_line:
+                        if (cur_line[-1].strip() and
+                            cur_len + len(self.placeholder) <= width):
+                            cur_line.append(self.placeholder)
+                            lines.append(indent + ''.join(cur_line))
+                            break
+                        cur_len -= len(cur_line[-1])
+                        del cur_line[-1]
+                    else:
+                        if lines:
+                            prev_line = lines[-1].rstrip()
+                            if (len(prev_line) + len(self.placeholder) <=
+                                    self.width):
+                                lines[-1] = prev_line + self.placeholder
+                                break
+                        lines.append(indent + self.placeholder.lstrip())
+                    break
+
+        return lines
+
+    def _split_chunks(self, text):
+        text = self._munge_whitespace(text)
+        return self._split(text)
+
+    # -- Public interface ----------------------------------------------
+
+    def wrap(self, text):
+        """wrap(text : string) -> [string]
+
+        Reformat the single paragraph in 'text' so it fits in lines of
+        no more than 'self.width' columns, and return a list of wrapped
+        lines.  Tabs in 'text' are expanded with string.expandtabs(),
+        and all other whitespace characters (including newline) are
+        converted to space.
+        """
+        chunks = self._split_chunks(text)
+        if self.fix_sentence_endings:
+            self._fix_sentence_endings(chunks)
+        return self._wrap_chunks(chunks)
+
+    def fill(self, text):
+        """fill(text : string) -> string
+
+        Reformat the single paragraph in 'text' to fit in lines of no
+        more than 'self.width' columns, and return a new string
+        containing the entire wrapped paragraph.
+        """
+        return "\n".join(self.wrap(text))
+
+
+# -- Convenience interface ---------------------------------------------
+
+def wrap(text, width=70, **kwargs):
+    """Wrap a single paragraph of text, returning a list of wrapped lines.
+
+    Reformat the single paragraph in 'text' so it fits in lines of no
+    more than 'width' columns, and return a list of wrapped lines.  By
+    default, tabs in 'text' are expanded with string.expandtabs(), and
+    all other whitespace characters (including newline) are converted to
+    space.  See TextWrapper class for available keyword args to customize
+    wrapping behaviour.
+    """
+    w = TextWrapper(width=width, **kwargs)
+    return w.wrap(text)
+
+def fill(text, width=70, **kwargs):
+    """Fill a single paragraph of text, returning a new string.
+
+    Reformat the single paragraph in 'text' to fit in lines of no more
+    than 'width' columns, and return a new string containing the entire
+    wrapped paragraph.  As with wrap(), tabs are expanded and other
+    whitespace characters converted to space.  See TextWrapper class for
+    available keyword args to customize wrapping behaviour.
+    """
+    w = TextWrapper(width=width, **kwargs)
+    return w.fill(text)
+
+def shorten(text, width, **kwargs):
+    """Collapse and truncate the given text to fit in the given width.
+
+    The text first has its whitespace collapsed.  If it then fits in
+    the *width*, it is returned as is.  Otherwise, as many words
+    as possible are joined and then the placeholder is appended::
+
+        >>> textwrap.shorten("Hello  world!", width=12)
+        'Hello world!'
+        >>> textwrap.shorten("Hello  world!", width=11)
+        'Hello [...]'
+    """
+    w = TextWrapper(width=width, max_lines=1, **kwargs)
+    return w.fill(' '.join(text.strip().split()))
+
+
+# -- Loosely related functionality -------------------------------------
+
+_whitespace_only_re = re.compile('^[ \t]+$', re.MULTILINE)
+_leading_whitespace_re = re.compile('(^[ \t]*)(?:[^ \t\n])', re.MULTILINE)
+
+def dedent(text):
+    """Remove any common leading whitespace from every line in `text`.
+
+    This can be used to make triple-quoted strings line up with the left
+    edge of the display, while still presenting them in the source code
+    in indented form.
+
+    Note that tabs and spaces are both treated as whitespace, but they
+    are not equal: the lines "  hello" and "\\thello" are
+    considered to have no common leading whitespace.
+
+    Entirely blank lines are normalized to a newline character.
+    """
+    # Look for the longest leading string of spaces and tabs common to
+    # all lines.
+    margin = None
+    text = _whitespace_only_re.sub('', text)
+    indents = _leading_whitespace_re.findall(text)
+    for indent in indents:
+        if margin is None:
+            margin = indent
+
+        # Current line more deeply indented than previous winner:
+        # no change (previous winner is still on top).
+        elif indent.startswith(margin):
+            pass
+
+        # Current line consistent with and no deeper than previous winner:
+        # it's the new winner.
+        elif margin.startswith(indent):
+            margin = indent
+
+        # Find the largest common whitespace between current line and previous
+        # winner.
+        else:
+            for i, (x, y) in enumerate(zip(margin, indent)):
+                if x != y:
+                    margin = margin[:i]
+                    break
+
+    # sanity check (testing/debugging only)
+    if 0 and margin:
+        for line in text.split("\n"):
+            assert not line or line.startswith(margin), \
+                   "line = %r, margin = %r" % (line, margin)
+
+    if margin:
+        text = re.sub(r'(?m)^' + margin, '', text)
+    return text
+
+
+def indent(text, prefix, predicate=None):
+    """Adds 'prefix' to the beginning of selected lines in 'text'.
+
+    If 'predicate' is provided, 'prefix' will only be added to the lines
+    where 'predicate(line)' is True. If 'predicate' is not provided,
+    it will default to adding 'prefix' to all non-empty lines that do not
+    consist solely of whitespace characters.
+    """
+    if predicate is None:
+        def predicate(line):
+            return line.strip()
+
+    def prefixed_lines():
+        for line in text.splitlines(True):
+            yield (prefix + line if predicate(line) else line)
+    return ''.join(prefixed_lines())
+
+
+if __name__ == "__main__":
+    #print dedent("\tfoo\n\tbar")
+    #print dedent("  \thello there\n  \t  how are you?")
+    print(dedent("Hello there.\n  This is indented."))
+

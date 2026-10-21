@@ -1,0 +1,113 @@
+{
+  "_doc": [
+    "P4 benchmark suite — fixed prompts, used to compare the base model against the",
+    "stage-4 LoRA fine-tune, and the shipped instruct GGUF as a reference point.",
+    "",
+    "Sampling is NOT temperature 0: it follows the Qwen3.5 model card's recommendation",
+    "for NON-THINKING mode, text tasks (the mode this stack serves — the request body",
+    "pins chat_template_kwargs.enable_thinking=false):",
+    "    temperature=1.0, top_p=1.00, top_k=20, min_p=0.0,",
+    "    presence_penalty=2.0, repetition_penalty=1.0",
+    "llama.cpp's own defaults differ (temp 0.80, top_k 40, top_p 0.95, min_p 0.05), so",
+    "every one of these is sent explicitly per request; repeat_penalty already defaults",
+    "to 1.00 and is sent anyway. Runs are made reproducible by a fixed seed per run index",
+    "(seed = 43506 + run), not by greedy decoding.",
+    "",
+    "max_tokens is per prompt and deliberately far below the card's 32k suggestion: the",
+    "point here is comparative quality at a fixed budget, and the context window is 8192.",
+    "",
+    "'probes' says what the prompt is for; 'check' is a machine-checkable expectation where",
+    "one exists (used by the report, not by the harness)."
+  ],
+  "suite_version": "1.0",
+  "sampling": {
+    "temperature": 1.0,
+    "top_p": 1.0,
+    "top_k": 20,
+    "min_p": 0.0,
+    "presence_penalty": 2.0,
+    "repeat_penalty": 1.0,
+    "chat_template_kwargs": {"enable_thinking": false},
+    "runs_per_prompt": 5,
+    "seed_base": 43506
+  },
+  "prompts": [
+    {
+      "id": "code-trivial-1",
+      "category": "coding / trivial",
+      "max_tokens": 320,
+      "probes": "short, unambiguous code generation; the kind of thing the fine-tune was trained on, so it should not regress",
+      "prompt": "Write a Python function `sum_even_squares(nums)` that returns the sum of the squares of the even numbers in a list. Include a docstring and one usage example."
+    },
+    {
+      "id": "code-trivial-2",
+      "category": "coding / trivial",
+      "max_tokens": 320,
+      "probes": "non-Python code generation (SQL) — checks the adapter did not overfit to Python alone",
+      "prompt": "Given tables customers(id, name) and orders(id, customer_id, amount), write a SQL query that returns the top 3 customers by total order value, with columns name and total."
+    },
+    {
+      "id": "general-trivial-1",
+      "category": "general / trivial",
+      "max_tokens": 260,
+      "probes": "plain knowledge explanation — a first check for general-ability degradation",
+      "prompt": "Explain in three sentences why the sky is blue."
+    },
+    {
+      "id": "general-trivial-2",
+      "category": "general / trivial",
+      "max_tokens": 260,
+      "probes": "instruction following in list form: exactly five items, one line each",
+      "prompt": "List five practical ways to reduce water use at home. Keep each item to one line.",
+      "check": "exactly 5 items"
+    },
+    {
+      "id": "code-context-1",
+      "category": "coding / larger context",
+      "max_tokens": 700,
+      "probes": "code review over a longer input: find a real bug, explain it, fix it",
+      "check": "identifies the eviction bug (LRU evicts the most-recently-used key)",
+      "prompt": "Review the Python module below. Identify any bug, explain why it is a bug, and give a corrected version of the affected method.\n\n```python\nfrom collections import OrderedDict\n\n\nclass LRUCache:\n    \"\"\"A least-recently-used cache with a fixed capacity.\"\"\"\n\n    def __init__(self, capacity: int):\n        if capacity <= 0:\n            raise ValueError(\"capacity must be positive\")\n        self.capacity = capacity\n        self._data = OrderedDict()\n        self.hits = 0\n        self.misses = 0\n\n    def get(self, key):\n        if key not in self._data:\n            self.misses += 1\n            return None\n        self.hits += 1\n        self._data.move_to_end(key, last=False)\n        return self._data[key]\n\n    def put(self, key, value):\n        if key in self._data:\n            self._data[key] = value\n            self._data.move_to_end(key, last=False)\n            return\n        if len(self._data) >= self.capacity:\n            self._data.popitem(last=True)\n        self._data[key] = value\n\n    def hit_rate(self):\n        total = self.hits + self.misses\n        return self.hits / total if total else 0.0\n```"
+    },
+    {
+      "id": "code-context-2",
+      "category": "coding / larger context",
+      "max_tokens": 700,
+      "probes": "spec adherence over a structured input: implement to a schema, honour required/enum/pattern",
+      "check": "validator enforces the enum and the required list",
+      "prompt": "Using the JSON Schema below, write a Python function `validate_record(record: dict) -> list[str]` that returns a list of human-readable error strings (empty list if valid). Do not use any third-party library.\n\n```json\n{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"SensorReading\",\n  \"type\": \"object\",\n  \"required\": [\"sensor_id\", \"timestamp\", \"value\", \"unit\"],\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"sensor_id\": {\"type\": \"string\", \"pattern\": \"^sensor-[0-9]{4}$\"},\n    \"timestamp\": {\"type\": \"string\", \"format\": \"date-time\"},\n    \"value\": {\"type\": \"number\", \"minimum\": -50, \"maximum\": 150},\n    \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\", \"kelvin\"]},\n    \"quality\": {\"type\": \"string\", \"enum\": [\"good\", \"suspect\", \"bad\"]},\n    \"tags\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}, \"maxItems\": 5}\n  }\n}\n```"
+    },
+    {
+      "id": "general-context-1",
+      "category": "general / larger context",
+      "max_tokens": 500,
+      "probes": "reading comprehension and summarisation over ~600 words of non-code prose",
+      "check": "summary in 5 bullets and states the main claim",
+      "prompt": "Read the passage below, then (a) summarise it in five bullet points and (b) state the author's main claim in one sentence.\n\n---\n\nContainer images are usually explained as a stack of layers, and that metaphor is accurate enough to be useful and misleading enough to cause trouble. Each instruction in a Dockerfile that modifies the filesystem produces a layer: a tar archive plus a small piece of JSON describing how to apply it. The runtime then mounts these archives one on top of another using an overlay filesystem, so that a container sees a single merged tree even though the bytes live in several places. Nothing is copied when a container starts. The layers are shared, read-only, and reference-counted, which is why starting ten containers from one image costs almost nothing in disk and why deleting an image that other images are built on top of does not actually free the bytes.\n\nThe trouble starts with the word stack. Layers are not merely ordered, they are immutable, and the consequences of immutability are easy to underestimate. When a later layer writes to a path that an earlier layer already created, the file is not modified in place. The overlay driver copies the file up into the writable layer, leaving the original untouched underneath. A build step that edits a large file therefore stores both versions, and a step that deletes a file frees nothing at all: the deletion is recorded as a whiteout marker while the original bytes remain in the lower layer. This is the single most common reason an image is far larger than the sum of the things its author believes it contains, and it is invisible to anyone who reads a Dockerfile without reading the resulting layers.\n\nCaching turns the same immutability into a performance property. A layer is identified by a hash of its parent, its instruction and its inputs, so a rebuild reuses every layer whose inputs did not change and rebuilds everything after the first one that did. The ordering rule that follows from this is simple to state and frequently violated: put the things that change rarely near the top and the things that change often near the bottom. A dependency installation placed below the application source survives an edit to the source; the same installation placed above it is repeated on every build. Teams that notice this usually gain more from reordering a Dockerfile than from any change to what it installs.\n\nFinally, immutability is what makes the supply-chain story tractable. Because a layer is addressed by its content hash, a digest identifies a set of bytes rather than a name that might later point somewhere else. Pinning by digest is not a formality: a tag is a mutable pointer that its publisher can move, and an image that resolves a tag at build time is only as reproducible as the tag's owner is careful. The same property makes provenance attestations meaningful, since they describe an artefact that cannot change without changing its name."
+    },
+    {
+      "id": "general-context-2",
+      "category": "general / larger context",
+      "max_tokens": 400,
+      "probes": "constrained writing over a longer input: three specific requirements plus a hard word limit",
+      "check": "agrees to the deadline, asks for the missing figure, under 120 words",
+      "prompt": "Below is an email thread. Draft a reply from Ana that (a) agrees to the deadline, (b) asks for the missing figure, and (c) stays under 120 words.\n\n---\n\nFrom: Mark\nSubject: Q3 report\n\nThe board pack is due Friday and I still do not have your section. I need the numbers and a short narrative. Can you get it to me by Thursday 18:00?\n\n---\n\nFrom: Ana\nSubject: RE: Q3 report\n\nThursday 18:00 is tight but probably fine. Which template are we using this quarter? The one from Q2 had a revenue table I no longer have data for.\n\n---\n\nFrom: Mark\nSubject: RE: RE: Q3 report\n\nSame template as Q2. The revenue table is not needed this time. What I do need is the cost breakdown by region and the headcount movement. You sent me the regional costs in July but not the headcount.\n\n---\n\nFrom: Priya\nSubject: RE: RE: RE: Q3 report\n\nFlagging that Finance closes the books on Thursday morning, so anything submitted after that will be marked provisional. If Ana's section is provisional the board pack will say so on the cover.\n\n---"
+    },
+    {
+      "id": "reasoning-1",
+      "category": "general / reasoning",
+      "max_tokens": 400,
+      "probes": "arithmetic reasoning with a single verifiable answer — the cheapest degradation canary",
+      "check": "18:05",
+      "prompt": "A train leaves at 14:20 and the journey takes 3 hours 45 minutes. What time does it arrive? Show your reasoning."
+    },
+    {
+      "id": "format-1",
+      "category": "general / format adherence",
+      "max_tokens": 200,
+      "probes": "strict output formatting: a single JSON object and nothing else",
+      "check": "output parses as JSON with keys city, country, population_estimate",
+      "prompt": "Reply with only a JSON object containing the keys \"city\", \"country\" and \"population_estimate\" for Lisbon. Output no other text, no markdown fence, no explanation."
+    }
+  ]
+}

@@ -229,3 +229,102 @@ string, so bash ran the inner text as a command substitution: the artifact print
 visible only by reading the generated artifact, not the script. General lesson: when a script
 *writes* an artifact, read the artifact — a syntax mistake in a generator is silent in a way it
 never is in a program.
+
+**Findings (P4 — the corpus is not the shape the plan described, and the base model is already good
+at it):** the Magicoder repo carries **no parquet at all**. At the pinned revision (unchanged, and
+current) it holds a single `data-oss_instruct-decontaminated.jsonl` of **203 201 169 B** — the size
+matched the plan's "~194 MiB", the format did not, and a loader written against the plan would have
+404'd. The trainer streams that file out of the HF cache line by line, which also makes a
+`--scan-limit` possible without decoding the whole corpus. More important: the base model's loss on
+this corpus is **~0.46 at step 1**, and the reason is measurable — on 200 records the sequence is
+208/524/1024 tokens (min/median/max), of which only **57/234/612** are *supervised* (the prompt is
+masked), and the solutions are template-heavy (`#include <iostream>`, `cout`, repeated function
+signatures copied from the problem statement). So the loss curve will move in a narrow band, and a
+full run that "improves" 0.46 → 0.42 is a normal result, not a broken one. **The consequence is a
+decision: the loss curve cannot be the evidence for this bullet** — §6.1 R4's two metrics
+(`ast.parse` adherence, a HumanEval pass@1 slice) measured base-vs-adapter are, and the curve is a
+figure showing the schedule behaved.
+
+**Findings (P4 — the composite→text-only load is a silent trap, and this checkpoint is exactly the
+case it bites):** `Qwen/Qwen3.5-2B-Base` ships the composite layout — 632 tensors: 320
+`model.language_model.*`, 297 `model.visual.*`, 15 `mtp.*` — while `Qwen3_5ForCausalLM` (transformers
+5.20.2) builds a `model.layers.*` module tree. `Qwen3_5ForCausalLM.from_pretrained(repo)` therefore
+matches **zero** weights: it emits a warning, initialises the text tower at random and trains that.
+The trainer re-keys the state dict itself and treats a non-empty `missing`/`unexpected` set as a hard
+error instead of a warning. Verified on the smoke run: **320 tensors loaded, 312 dropped** (`mtp` +
+`model.visual`), `missing: []`, `unexpected: []`, **1 881 825 088** text parameters. One legitimate
+absence to keep in mind when reading that check: `lm_head.weight` is not in the checkpoint because
+the embeddings are tied — it is the one name allowed to be missing, and the code says so.
+
+**Findings (P4 — training image and environment, measured):** the training image is
+**38 248 955 946 B (38.25 GB)**, of which the `nvcr.io/nvidia/pytorch:26.09-py3` base is
+**38 065 164 029 B (38.07 GB)** — the whole training stack (transformers, peft, datasets, matplotlib)
+adds **184 MB**. The plan's "~25 GB unpacked" estimate for the base was **13 GB low**, which matters
+only because it is the number that decided against the disk-poor serving host; the decision stands,
+the margin does not. Two more environment facts worth carrying: torch inside that image is
+**2.14.0a0+b2c75dd062.nv26.9.68203377**, an alpha build, which is a second reason not to layer a
+`pip install torch` on top of it; and the GDN reference fallbacks are now *measured* rather than
+predicted — the log reports `causal_conv1d_fn` and `chunk_gated_delta_rule` both falling back to
+their pure-PyTorch implementations because neither `causal_conv1d` nor `flash-linear-attention` is
+installed. `USE_HUB_KERNELS=0` is pinned in the image so that stays true instead of transformers
+resolving a hub kernel at run time. And peft writes the adapter in **fp32**: 62 561 688 B for r=16
+across 10 target-module names (**15 630 336** trainable parameters, 0.82 % of 1.897 B) — not the
+~30 MB the plan predicted, which is the number that matters for what the adapter costs to ship.
+
+**Findings (P4 — the full run, measured):** 374 optimizer steps (2 epochs × 187) in **1801 s** on the
+3090 Ti — 4.76 s/step, 2071.6 padded tokens/s median, flat for the whole run. Loss **0.4070 → 0.3359**,
+per-step minimum **0.1763 at step 293**, and the interval means carry the shape: ~0.41 over steps 1–25,
+a plateau at ~0.33 to step 175, a second drop to ~0.26 by step 300, then flat ~0.27 for the last 75
+steps while the cosine LR decays to zero. Adapter 62 561 688 B, trainable 15 630 336 (0.82 %). Device
+peak: the sampler covering the second half saw **13 249 MiB**, while the smoke run — identical
+configuration, sampled from step 1 — showed **18 063 MiB** in its device table and 17 905 MiB in its own
+sampler. That asymmetry is the finding worth keeping: a
+sampler started late reports a **lower bound**, and the honest peak for the configuration is the number
+from the run that was sampled from the first step (18 GB of 24 GB, ~6 GB headroom).
+
+**Findings (P4 — the adapter is written as root into a bind mount):** `save_pretrained` runs as the
+container's root user, so `adapter_model.safetensors` lands on the host as `root:root`, mode `600` —
+`ls` shows the file sitting there while a plain `scp` of the directory fails with "Permission denied".
+Retrieval is `docker cp <container>:/out/adapter/. <dir>` (which runs as root), or a matching `user:` on
+the service. Worth knowing before the adapter is needed: the run is 30 minutes and the file is the
+deliverable.
+
+**Findings (P4 benchmark — the adapter changed style, not correctness):** 150 generations (10 fixed
+prompts × 5 sampled runs × 3 arms; base and tuned serve the *same* GGUF, the adapter is the only
+difference). Verdict: no demonstrated coding gain. On the code-review prompt neither arm of the pair
+finds the real bug — the cache evicts the most-recently-*inserted* key, because only `get` moves a key
+to the front, so `popitem(last=True)` never evicts the LRU — and both arms hallucinate confidently about
+it; one tuned run's "corrected version" is the original code unchanged. What is real and repeatable:
+tuned answers are ~45 % shorter (6 594 vs 11 908 completion tokens over 50 runs) and never hit the token
+cap (0/50 vs base 7/50). That terseness is a genuine win on `reasoning-1` (2/5 correct vs 0/5) and a
+genuine regression on the email prompt, where 4/5 tuned replies are third-person *descriptions* of the
+requested email rather than the email. Held-out perplexity moves the wrong way, slightly: 9.0791 → 9.1941
+(general prose) and 3.0116 → 3.0758 (code). Two things worth keeping from the base side: at these
+settings the *base* model leaks chat-template artefacts mid-answer (`...}`) and contradicts itself
+arithmetically (computes 6:20 PM, prints 19:20); and simple clock arithmetic is unreliable in every arm —
+tuned's best runs reach 18:05, one reaches it and then relabels it "6:05 AM the next day".
+
+**Findings (P4 benchmark — what the method had to be, twice):** the shipped GGUF is the **instruct**
+lineage while the adapter was trained on the **Base** checkpoint, so the only honest pair is base vs
+base+adapter at identical quantization; measuring the adapter against the production model would have
+silently reported "base vs post-trained" as "the adapter's effect". And the first-run canaries are
+seed-driven, not arm-driven: at seed 43507 all three arms returned `{}` for the strict-JSON prompt, which
+is a sampling artefact that a single-run benchmark would have published as a model difference.
+
+**Findings (P4 — an evidence generator can fail in the direction of looking fine):** two bugs in the
+smoke record were found only by re-running it and reading the artifact it produced. (a) The VRAM
+sampler wrote through a single redirected stdout, which is block-buffered, so a run short enough to
+finish before the buffer filled wrote **zero** samples — and the section then printed a device table
+captured while the GPU was idle, in a file whose purpose is to prove the GPU was used. (b) The "wait
+until the first loss line appears" check keyed on the loss log, which survives from the previous run,
+so on a re-run it returned immediately and the same idle table was captured. Fixes: append per line
+(which is unbuffered without `stdbuf`) and truncate the loss log before launching. Same family as the
+backtick bug above — an evidence script is only as honest as its worst re-run, and the tell is a
+section that is present but empty.
+
+**Findings (P4 — an inherited `EXPOSE` makes the trainer's isolation look weaker than it is):** the
+NGC base image `EXPOSE`s 6006 and 8888 itself, so `docker compose ps` prints `6006/tcp, 8888/tcp` in
+the PORTS column of a service that declares no `ports:` and no `expose:` at all. Nothing is published
+— Compose publishes only what `ports:` maps, and there is no mapping here — but the column reads like
+one, which is the kind of detail that turns a correct claim ("the trainer has no interface") into a
+contested one during a review. Worth one sentence in the artifact rather than a silent confusion.
