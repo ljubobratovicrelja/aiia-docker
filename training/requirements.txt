@@ -1,0 +1,17 @@
+# Training stack for the P4 LoRA stage (aiia-docker) — direct dependencies only.
+#
+# torch is deliberately NOT listed: the base image (nvcr.io/nvidia/pytorch)
+# already ships a CUDA build, and reinstalling it here would either duplicate
+# ~3 GB of layers or replace a tested build with an untested one.
+#
+# Versions are pinned because the arch support this stage needs is young:
+# `Qwen3_5ForCausalLM` and `Qwen3_5TextConfig` only exist from the transformers
+# 5.16 line on, so an unpinned resolve that lands on 4.x turns the import into a
+# hard `ImportError`.  Transitive dependencies (huggingface_hub, safetensors,
+# accelerate, protobuf) are left to pip on purpose — pinning them by hand is how
+# you get a resolver conflict against the front-end libraries' own bounds.
+transformers==5.20.2
+peft==0.21.2
+datasets==5.1.0
+sentencepiece==0.2.2
+matplotlib==3.11.2

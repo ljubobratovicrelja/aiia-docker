@@ -1,0 +1,267 @@
+======================================================================
+bench-finetune.txt — base vs stage-4 LoRA vs shipped instruct GGUF
+======================================================================
+date          : 2026-10-20T22:09:59+02:00
+host          : x86_64, docker 29.9.1 engine, 5.6.0 compose
+gpu           : NVIDIA GeForce RTX 3090 Ti, 580.178.04
+llama.cpp     : version: 0.7.0-dev (build 11749, commit 1d88cb05f)
+suite         : bench/prompts.json (10 fixed prompts, 5 runs each, seeds 43507..43511)
+server flags  : -c 8192 -ngl 99 -fa on --host 127.0.0.1 --port 8081 -lv 2
+controlled pair: base (no adapter) vs tuned (same base.gguf + --lora adapter.gguf)
+reference     : instruct — a different lineage, listed for orientation only
+
+# 1. Host, image and suite
+  gpu          NVIDIA GeForce RTX 3090 Ti, 580.178.04
+  llama.cpp    version: 0.7.0-dev (build 11749, commit 1d88cb05f)
+  models dir   /var/tmp/aiia-bench/models
+  base -> base-Q4_K_M.gguf  (lora=0)
+  tuned -> base-Q4_K_M.gguf  (lora=1)
+  instruct -> instruct-Q4_K_M.gguf  (lora=0)
+
+# 2. Serve arm 'base' (base-Q4_K_M.gguf)
+  waiting for /health ...
+  healthy after ~4s
+  --- probes (bench/prompts.json) ---
+    code-trivial-1     run 1/5 seed 43507   0.44s   119 tok  stop
+    code-trivial-1     run 2/5 seed 43508   0.77s   214 tok  stop
+    code-trivial-1     run 3/5 seed 43509   1.10s   320 tok  length
+    code-trivial-1     run 4/5 seed 43510   0.85s   240 tok  stop
+    code-trivial-1     run 5/5 seed 43511   0.51s   142 tok  stop
+    code-trivial-2     run 1/5 seed 43507   0.54s   151 tok  stop
+    code-trivial-2     run 2/5 seed 43508   0.75s   215 tok  stop
+    code-trivial-2     run 3/5 seed 43509   1.07s   309 tok  stop
+    code-trivial-2     run 4/5 seed 43510   1.05s   302 tok  stop
+    code-trivial-2     run 5/5 seed 43511   0.99s   289 tok  stop
+    general-trivial-1  run 1/5 seed 43507   0.36s    98 tok  stop
+    general-trivial-1  run 2/5 seed 43508   0.63s   182 tok  stop
+    general-trivial-1  run 3/5 seed 43509   0.33s    90 tok  stop
+    general-trivial-1  run 4/5 seed 43510   0.27s    73 tok  stop
+    general-trivial-1  run 5/5 seed 43511   0.56s   162 tok  stop
+    general-trivial-2  run 1/5 seed 43507   0.22s    58 tok  stop
+    general-trivial-2  run 2/5 seed 43508   0.24s    64 tok  stop
+    general-trivial-2  run 3/5 seed 43509   0.54s   153 tok  stop
+    general-trivial-2  run 4/5 seed 43510   0.41s   115 tok  stop
+    general-trivial-2  run 5/5 seed 43511   0.40s   112 tok  stop
+    code-context-1     run 1/5 seed 43507   1.20s   344 tok  stop
+    code-context-1     run 2/5 seed 43508   1.62s   472 tok  stop
+    code-context-1     run 3/5 seed 43509   2.34s   700 tok  length
+    code-context-1     run 4/5 seed 43510   1.10s   324 tok  stop
+    code-context-1     run 5/5 seed 43511   1.86s   541 tok  stop
+    code-context-2     run 1/5 seed 43507   1.12s   333 tok  stop
+    code-context-2     run 2/5 seed 43508   2.22s   676 tok  stop
+    code-context-2     run 3/5 seed 43509   2.30s   700 tok  length
+    code-context-2     run 4/5 seed 43510   2.20s   669 tok  stop
+    code-context-2     run 5/5 seed 43511   1.59s   482 tok  stop
+    general-context-1  run 1/5 seed 43507   0.76s   211 tok  stop
+    general-context-1  run 2/5 seed 43508   0.67s   199 tok  stop
+    general-context-1  run 3/5 seed 43509   0.70s   209 tok  stop
+    general-context-1  run 4/5 seed 43510   0.55s   162 tok  stop
+    general-context-1  run 5/5 seed 43511   0.63s   188 tok  stop
+    general-context-2  run 1/5 seed 43507   0.16s    33 tok  stop
+    general-context-2  run 2/5 seed 43508   0.24s    69 tok  stop
+    general-context-2  run 3/5 seed 43509   0.35s   101 tok  stop
+    general-context-2  run 4/5 seed 43510   0.30s    87 tok  stop
+    general-context-2  run 5/5 seed 43511   0.28s    79 tok  stop
+    reasoning-1        run 1/5 seed 43507   1.32s   400 tok  length
+    reasoning-1        run 2/5 seed 43508   1.37s   400 tok  length
+    reasoning-1        run 3/5 seed 43509   0.60s   173 tok  stop
+    reasoning-1        run 4/5 seed 43510   1.37s   400 tok  length
+    reasoning-1        run 5/5 seed 43511   1.36s   400 tok  length
+    format-1           run 1/5 seed 43507   0.04s     2 tok  stop
+    format-1           run 2/5 seed 43508   0.09s    23 tok  stop
+    format-1           run 3/5 seed 43509   0.10s    28 tok  stop
+    format-1           run 4/5 seed 43510   0.10s    28 tok  stop
+    format-1           run 5/5 seed 43511   0.23s    67 tok  stop
+  wrote /tmp/tmp.66DdTgwPcm/frag-base.json (10 prompts x 5 runs)
+  stopped aiia-bench-base
+
+# 2. Serve arm 'tuned' (base-Q4_K_M.gguf + adapter.gguf)
+  waiting for /health ...
+  healthy after ~4s
+  --- adapter evidence (server log) ---
+  --- probes (bench/prompts.json) ---
+    code-trivial-1     run 1/5 seed 43507   0.85s   168 tok  stop
+    code-trivial-1     run 2/5 seed 43508   0.61s   126 tok  stop
+    code-trivial-1     run 3/5 seed 43509   0.55s   114 tok  stop
+    code-trivial-1     run 4/5 seed 43510   0.41s    82 tok  stop
+    code-trivial-1     run 5/5 seed 43511   0.44s    90 tok  stop
+    code-trivial-2     run 1/5 seed 43507   0.21s    38 tok  stop
+    code-trivial-2     run 2/5 seed 43508   0.24s    49 tok  stop
+    code-trivial-2     run 3/5 seed 43509   0.40s    84 tok  stop
+    code-trivial-2     run 4/5 seed 43510   0.49s   100 tok  stop
+    code-trivial-2     run 5/5 seed 43511   0.24s    46 tok  stop
+    general-trivial-1  run 1/5 seed 43507   0.26s    50 tok  stop
+    general-trivial-1  run 2/5 seed 43508   0.29s    57 tok  stop
+    general-trivial-1  run 3/5 seed 43509   0.26s    50 tok  stop
+    general-trivial-1  run 4/5 seed 43510   0.41s    83 tok  stop
+    general-trivial-1  run 5/5 seed 43511   0.33s    66 tok  stop
+    general-trivial-2  run 1/5 seed 43507   0.34s    67 tok  stop
+    general-trivial-2  run 2/5 seed 43508   0.44s    90 tok  stop
+    general-trivial-2  run 3/5 seed 43509   0.50s   102 tok  stop
+    general-trivial-2  run 4/5 seed 43510   0.65s   135 tok  stop
+    general-trivial-2  run 5/5 seed 43511   0.42s    87 tok  stop
+    code-context-1     run 1/5 seed 43507   0.37s    68 tok  stop
+    code-context-1     run 2/5 seed 43508   1.39s   297 tok  stop
+    code-context-1     run 3/5 seed 43509   1.03s   217 tok  stop
+    code-context-1     run 4/5 seed 43510   1.66s   357 tok  stop
+    code-context-1     run 5/5 seed 43511   1.59s   340 tok  stop
+    code-context-2     run 1/5 seed 43507   1.16s   246 tok  stop
+    code-context-2     run 2/5 seed 43508   1.47s   325 tok  stop
+    code-context-2     run 3/5 seed 43509   2.78s   612 tok  stop
+    code-context-2     run 4/5 seed 43510   1.80s   394 tok  stop
+    code-context-2     run 5/5 seed 43511   0.40s    82 tok  stop
+    general-context-1  run 1/5 seed 43507   0.59s   109 tok  stop
+    general-context-1  run 2/5 seed 43508   0.39s    80 tok  stop
+    general-context-1  run 3/5 seed 43509   0.71s   154 tok  stop
+    general-context-1  run 4/5 seed 43510   0.58s   121 tok  stop
+    general-context-1  run 5/5 seed 43511   0.62s   133 tok  stop
+    general-context-2  run 1/5 seed 43507   0.25s    42 tok  stop
+    general-context-2  run 2/5 seed 43508   0.23s    46 tok  stop
+    general-context-2  run 3/5 seed 43509   0.26s    53 tok  stop
+    general-context-2  run 4/5 seed 43510   0.13s    25 tok  stop
+    general-context-2  run 5/5 seed 43511   0.34s    71 tok  stop
+    reasoning-1        run 1/5 seed 43507   1.10s   234 tok  stop
+    reasoning-1        run 2/5 seed 43508   0.81s   173 tok  stop
+    reasoning-1        run 3/5 seed 43509   0.79s   169 tok  stop
+    reasoning-1        run 4/5 seed 43510   0.88s   188 tok  stop
+    reasoning-1        run 5/5 seed 43511   0.90s   192 tok  stop
+    format-1           run 1/5 seed 43507   0.15s    24 tok  stop
+    format-1           run 2/5 seed 43508   0.18s    36 tok  stop
+    format-1           run 3/5 seed 43509   0.21s    43 tok  stop
+    format-1           run 4/5 seed 43510   0.18s    36 tok  stop
+    format-1           run 5/5 seed 43511   0.21s    43 tok  stop
+  wrote /tmp/tmp.66DdTgwPcm/frag-tuned.json (10 prompts x 5 runs)
+  stopped aiia-bench-tuned
+
+# 2. Serve arm 'instruct' (instruct-Q4_K_M.gguf)
+  waiting for /health ...
+  healthy after ~4s
+  --- probes (bench/prompts.json) ---
+    code-trivial-1     run 1/5 seed 43507   1.12s   320 tok  length
+    code-trivial-1     run 2/5 seed 43508   1.11s   320 tok  length
+    code-trivial-1     run 3/5 seed 43509   1.11s   320 tok  length
+    code-trivial-1     run 4/5 seed 43510   1.10s   320 tok  length
+    code-trivial-1     run 5/5 seed 43511   1.11s   320 tok  length
+    code-trivial-2     run 1/5 seed 43507   0.79s   221 tok  stop
+    code-trivial-2     run 2/5 seed 43508   0.87s   247 tok  stop
+    code-trivial-2     run 3/5 seed 43509   1.12s   320 tok  length
+    code-trivial-2     run 4/5 seed 43510   0.75s   213 tok  stop
+    code-trivial-2     run 5/5 seed 43511   1.10s   320 tok  length
+    general-trivial-1  run 1/5 seed 43507   0.34s    90 tok  stop
+    general-trivial-1  run 2/5 seed 43508   0.27s    71 tok  stop
+    general-trivial-1  run 3/5 seed 43509   0.37s   103 tok  stop
+    general-trivial-1  run 4/5 seed 43510   0.30s    81 tok  stop
+    general-trivial-1  run 5/5 seed 43511   0.36s    99 tok  stop
+    general-trivial-2  run 1/5 seed 43507   0.32s    85 tok  stop
+    general-trivial-2  run 2/5 seed 43508   0.30s    82 tok  stop
+    general-trivial-2  run 3/5 seed 43509   0.47s   135 tok  stop
+    general-trivial-2  run 4/5 seed 43510   0.34s    91 tok  stop
+    general-trivial-2  run 5/5 seed 43511   0.47s   129 tok  stop
+    code-context-1     run 1/5 seed 43507   2.38s   700 tok  length
+    code-context-1     run 2/5 seed 43508   2.37s   700 tok  length
+    code-context-1     run 3/5 seed 43509   2.41s   700 tok  length
+    code-context-1     run 4/5 seed 43510   2.35s   700 tok  length
+    code-context-1     run 5/5 seed 43511   1.98s   582 tok  stop
+    code-context-2     run 1/5 seed 43507   2.34s   700 tok  length
+    code-context-2     run 2/5 seed 43508   2.14s   643 tok  stop
+    code-context-2     run 3/5 seed 43509   2.22s   667 tok  stop
+    code-context-2     run 4/5 seed 43510   2.33s   700 tok  length
+    code-context-2     run 5/5 seed 43511   2.26s   677 tok  stop
+    general-context-1  run 1/5 seed 43507   0.42s   105 tok  stop
+    general-context-1  run 2/5 seed 43508   0.97s   283 tok  stop
+    general-context-1  run 3/5 seed 43509   1.26s   371 tok  stop
+    general-context-1  run 4/5 seed 43510   0.77s   224 tok  stop
+    general-context-1  run 5/5 seed 43511   0.79s   233 tok  stop
+    general-context-2  run 1/5 seed 43507   0.34s    84 tok  stop
+    general-context-2  run 2/5 seed 43508   0.28s    77 tok  stop
+    general-context-2  run 3/5 seed 43509   0.23s    62 tok  stop
+    general-context-2  run 4/5 seed 43510   0.23s    65 tok  stop
+    general-context-2  run 5/5 seed 43511   0.22s    61 tok  stop
+    reasoning-1        run 1/5 seed 43507   1.38s   400 tok  length
+    reasoning-1        run 2/5 seed 43508   1.39s   400 tok  length
+    reasoning-1        run 3/5 seed 43509   1.39s   400 tok  length
+    reasoning-1        run 4/5 seed 43510   1.35s   400 tok  length
+    reasoning-1        run 5/5 seed 43511   1.38s   400 tok  length
+    format-1           run 1/5 seed 43507   0.04s     2 tok  stop
+    format-1           run 2/5 seed 43508   0.09s    23 tok  stop
+    format-1           run 3/5 seed 43509   0.10s    28 tok  stop
+    format-1           run 4/5 seed 43510   0.11s    28 tok  stop
+    format-1           run 5/5 seed 43511   0.10s    28 tok  stop
+  wrote /tmp/tmp.66DdTgwPcm/frag-instruct.json (10 prompts x 5 runs)
+  stopped aiia-bench-instruct
+
+# 2b. Adapter-apply evidence (tuned arm booted once at -lv 4)
+  --- server log: LoRA load ---
+    0.00.888.350 I llama_adapter_lora_init: loading lora adapter from '/models/adapter.gguf' ...
+    0.00.888.487 I llama_adapter_lora_init_impl: Dumping metadata keys/values.
+    0.00.888.494 I llama_adapter_lora_init_impl: - kv   0:                       general.architecture str              = qwen35
+    0.00.888.495 I llama_adapter_lora_init_impl: - kv   1:                               general.type str              = adapter
+    0.00.888.496 I llama_adapter_lora_init_impl: - kv   2:                               adapter.type str              = lora
+    0.00.888.496 I llama_adapter_lora_init_impl: - kv   3:                               general.name str              = Adapter
+    0.00.888.498 I llama_adapter_lora_init_impl: - kv   4:                   general.base_model.count u32              = 1
+    0.00.888.505 I llama_adapter_lora_init_impl: - kv   5:                               general.tags arr[str,4]       = ["base_model:adapter:", "lora", "tran...
+    0.00.888.507 I llama_adapter_lora_init_impl: - kv   6:                         adapter.lora.alpha f32              = 32.000000
+    0.00.888.508 I llama_adapter_lora_init_impl: - kv   7:               general.quantization_version u32              = 2
+    0.00.888.789 I llama_adapter_lora_init_impl:      CUDA0 LoRA buffer size =    59.62 MiB
+    0.00.901.288 I llama_adapter_lora_init_impl: loaded 300 tensors from lora file
+  (full log kept out of evidence/ — it is a boot log, not a measurement)
+
+# 3. Perplexity (held-out texts, classic degradation metric)
+  base      general  ppl=9.0791 chunks=2
+  base      code     ppl=3.0116 chunks=2
+  tuned     general  ppl=9.1941 chunks=2
+  tuned     code     ppl=3.0758 chunks=2
+  instruct  general  ppl=10.1246 chunks=2
+  instruct  code     ppl=3.2293 chunks=2
+
+# 4. Assemble evidence/bench-finetune.json
+  extracting sha256 of each GGUF ...
+{
+  "base": "a66dd41007cda6e697916d27241943f1ace4ca21d0fb4242d9fbd71fd0923d1b",
+  "instruct": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
+  "adapter": "3f41fa7ce21ca4d7205f41647b8386d760cb52de448355b5782c0aa4d554c3a8"
+}
+  wrote evidence/bench-finetune.json 373427 bytes
+  results: 30 prompt-arms; runs total: 150
+
+# 5. Record
+  evidence/bench-finetune.json : 373427 bytes
+
+--- server logs (base) ---
+
+--- server logs (tuned) ---
+
+# 6. Teardown check
+  aiia-bench containers left: 0
+    0.00.901.288 I llama_adapter_lora_init_impl: loaded 300 tensors from lora file
+  (full log kept out of evidence/ — it is a boot log, not a measurement)
+
+# 3. Perplexity (held-out texts, classic degradation metric)
+  base      general  ppl=9.0791 chunks=2
+  base      code     ppl=3.0116 chunks=2
+  tuned     general  ppl=9.1941 chunks=2
+  tuned     code     ppl=3.0758 chunks=2
+  instruct  general  ppl=10.1246 chunks=2
+  instruct  code     ppl=3.2293 chunks=2
+
+# 4. Assemble evidence/bench-finetune.json
+  extracting sha256 of each GGUF ...
+{
+  "base": "a66dd41007cda6e697916d27241943f1ace4ca21d0fb4242d9fbd71fd0923d1b",
+  "instruct": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223",
+  "adapter": "3f41fa7ce21ca4d7205f41647b8386d760cb52de448355b5782c0aa4d554c3a8"
+}
+  wrote evidence/bench-finetune.json 373427 bytes
+  results: 30 prompt-arms; runs total: 150
+
+# 5. Record
+  evidence/bench-finetune.json : 373427 bytes
+
+--- server logs (base) ---
+
+--- server logs (tuned) ---
+
+# 6. Teardown check
+  aiia-bench containers left: 0
+
+done: evidence/bench-finetune.json ; human log: evidence/bench-finetune.txt

@@ -51,3 +51,55 @@ services:
       inference:
         condition: service_healthy
     restart: unless-stopped
+
+  # Container 3 (stage 4 / P4) — the LoRA fine-tune.  OFF THE SERVING PATH.
+  #
+  # Gated by `profiles: ["train"]`, which is the reason a plain
+  # `docker compose up -d` still starts exactly the two original services: a
+  # profile decides whether a service *exists* for a given invocation, and
+  # nothing here can disturb inference/gui even by accident.  (Profiles are
+  # right for ADDING a service; they were the wrong tool for the GPU variant of
+  # an existing one — that is why compose.gpu.yaml is an override file.)
+  #
+  #   docker compose --profile train up -d training        # launch
+  #   docker compose --profile train logs -f training      # second monitor
+  #   tail -f training/out/loss.jsonl                      # first monitor
+  #
+  # No `ports:` and no `expose:`: the training container has no interface at
+  # all, it only writes files into the mounted output directory.
+  #
+  # restart: "no" is deliberate.  A restart policy on a training job turns a
+  # crash at step 4 (a bad batch, an OOM on a longer sequence) into a loop that
+  # re-runs everything from step 0 and silently overwrites the loss log on every
+  # pass.  The cache would survive that; the measurement would not.
+  training:
+    profiles: ["train"]
+    build:
+      context: ./training
+    image: aiia-docker/training:stage-4
+    environment:
+      OUT_DIR: /out/adapter
+      LOSS_LOG: /out/loss.jsonl
+      # The smoke knobs, passed through from the shell.  Empty = the committed
+      # default in train_lora.py, which is the run configuration of record.
+      MAX_STEPS: "${MAX_STEPS:-}"
+      TRAIN_SIZE: "${TRAIN_SIZE:-}"
+      SCAN_LIMIT: "${SCAN_LIMIT:-}"
+      EPOCHS: "${EPOCHS:-}"
+      BATCH_SIZE: "${BATCH_SIZE:-}"
+      GRAD_ACCUM: "${GRAD_ACCUM:-}"
+    volumes:
+      # The 4.5 GB base checkpoint and the 194 MiB corpus live HERE, on the
+      # host, never in the image: the smoke run's download is exactly what the
+      # full run reuses, and no rebuild re-fetches either.
+      - "${TRAIN_HF_CACHE:-/var/tmp/aiia-hf-cache}:/hf-cache"
+      # The adapter and the JSONL loss log come back out through this one.
+      - "${TRAIN_OUT:-./training/out}:/out"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: "no"
