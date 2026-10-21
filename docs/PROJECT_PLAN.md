@@ -84,7 +84,7 @@ Each phase ends with something executable that proves it, not with "it should wo
 | **P1** ✅ | CPU two-container baseline: `inference/` + `gui/`, `compose.yaml` | Verified: a prompt through the **GUI container's HTTP API** returns a completion generated inside the inference container; `PortBindings` on inference is `null` while the GUI is published on 7860; limits/shm/read-only/user applied to **both** services |
 | **P2** ✅ | Craft demonstration and measured CPU evidence | Verified: every criterion now has an artifact plus a regeneration command in `docs/EVIDENCE.md` (rows 1–10, 14). Cache ordering proved by building three ways: nothing changed → **every step `CACHED`**; app code edited → the pip layer `CACHED` and only `COPY app.py` re-runs; `LLAMA_ARG_CTX_SIZE` changed → the **1.28 GB model layer `CACHED`**, nothing re-downloaded (`evidence/build-cache.txt`). Image sizes and the full layer breakdown measured (`evidence/image-sizes.txt`), with one size decision actually taken rather than asserted — `pip install --no-cache-dir` kept after building the alternative and measuring it: **461.21 MB vs 545.29 MB (+84.1 MB, +18.2 %)** (`evidence/size-experiment.txt`). Fixed prompt measured on CPU through **both** paths: **8.88 tok/s median isolated** (4.280 s, 38 tokens) and **8.49 tok/s through the GUI** (`evidence/bench-cpu.txt`) — the numbers rows 1–2 and the stage-3 baseline quote |
 | **P3** ✅ | GPU build target + Compose override file, and CPU-vs-GPU numbers | Verified: `inference/Dockerfile` builds a `cpu` target (the default — it is the file's last stage) and a `gpu` target (`server-cuda13`) out of **one shared model stage**, so switching targets never re-downloads the 1.28 GB GGUF (the second build's model layer is `CACHED`); `compose.gpu.yaml` is an **override file** — not a profile: a profile can add a service but cannot re-parameterise an existing one — setting `build.target: gpu`, a distinct image tag, `deploy.resources.reservations.devices` and the offload env; the running container holds a real device request (`HostConfig.DeviceRequests`) and offloads **25/25 layers to GPU** (`CUDA0 model buffer size = 1211.05 MiB`, 1589 MiB per `nvidia-smi` **inside** the container); same fixed prompt, same request body: **134.40 tok/s GPU vs 8.88 CPU** (15.14× effective tokens/s; pooled 135.48 vs 8.74, and 15.63× then 15.08× in the two executions kept in the artifact); plain `docker compose up -d --build` still builds and runs the CPU target unchanged |
-| **P4** | LoRA training stage | adapter file produced ✅ (62 561 688 B), loss curve recorded ✅ (`evidence/loss-curve.png`, three panels), **full run ✅** — 374 optimizer steps, exit 0, no OOM, loss 0.4070 → 0.3359, 4.76 s/step, ~30 min, 18 GB of 24 GB peak (`evidence/train-run.txt`, [`TRAINING_REPORT.md`](TRAINING_REPORT.md)). **Remaining:** plan §6.1 R4's `ast.parse` adherence and HumanEval pass@1 slice. **Base vs adapter measured** — 150 generations (10 fixed prompts × 5 sampled runs × 3 arms), adapter against its own base at identical quantization, read in [`BENCHMARK_REPORT.md`](BENCHMARK_REPORT.md): the adapter changed style far more than correctness (~45 % shorter, 0/50 vs 7/50 truncations), one win (`reasoning-1` 2/5 vs 0/5), one regression (`general-context-2`: 4/5 third-person meta-descriptions instead of the requested email), no demonstrated coding gain. **Host: the RTX 3090 Ti machine, not the Spark** — 24 GB is ample for the bf16 LoRA, it is ~2.4× the GB10 on this model, and the Spark's `/` has only 32 GB free against 311 GB there (the training base image alone is 38.25 GB unpacked). Adapter returns to the Spark for GGUF conversion and serving on the stage-3 stack |
+| **P4** ✅ | LoRA training stage | Verified and **merged** (`db76964`, PR #4). Adapter produced (62 561 688 B), loss curve recorded (`evidence/loss-curve.png`, three panels), **full run** — 374 optimizer steps, exit 0, no OOM, loss 0.4070 → 0.3359, 4.76 s/step, ~30 min, ~18 GB of 24 GB peak (`evidence/train-run.txt`, [`TRAINING_REPORT.md`](TRAINING_REPORT.md)). **Base vs adapter measured** — 150 generations (10 fixed prompts × 5 sampled runs × 3 arms), adapter against its own base at identical quantization, read in [`BENCHMARK_REPORT.md`](BENCHMARK_REPORT.md): the adapter changed style far more than correctness (~45 % shorter, 0/50 vs 7/50 truncations), one win (`reasoning-1` 2/5 vs 0/5), one regression (`general-context-2`: 4/5 third-person meta-descriptions instead of the requested email), no demonstrated coding gain. **Remaining (not part of P4's own criteria):** plan §6.1 R4's `ast.parse` adherence and HumanEval pass@1 slice. **Host: the RTX 3090 Ti machine, not the Spark** — 24 GB is ample for the bf16 LoRA, it is ~2.4× the GB10 on this model, and the Spark's `/` has only 32 GB free against 311 GB there (the training base image alone is 38.25 GB unpacked). Adapter returns to the Spark for GGUF conversion and serving on the stage-3 stack |
 | **P5** | HF Space | public Space URL answering a request |
 | **P6** | Report (≤6 pp) | **not started — awaiting Relja's call** |
 
@@ -223,6 +223,31 @@ number of optional items we attempt is bounded by the page budget, not by ambiti
   a demo, not for a benchmark run.
 - Judgement: **do it** — it is an evening's work, the app itself is small, and it is the only
   max-grade bullet left that costs nothing but time.
+
+**R5 refresh — re-read against the live docs (2026-10-21), because the free tier narrowed since the
+answer above was written.** Two of these change the plan; one corrects a claim made in conversation.
+
+- **Creating a Gradio Space on `cpu-basic` is now paid too**, not just Docker: the docs say *"Static
+  Spaces are free for everyone. Gradio and Docker Spaces run on compute and require a paid plan to
+  create: PRO for personal accounts, Team or Enterprise for organizations. Free personal accounts in
+  good standing can still host up to 2 Gradio Spaces running on ZeroGPU."* So ZeroGPU is not merely
+  the cheap route — it is the **only free compute route**, and the plan above still holds.
+- **"Good standing" has a definition to check before building**: *verified email and account older
+  than 30 days*. Worth confirming on the account we publish under, because the failure would appear
+  only at creation time.
+- **Quota is charged on effective duration, times a size multiplier** — `large` (half RTX Pro 6000
+  Blackwell, 48 GB) is 1×, `xlarge` (96 GB) is 2×, so a 45 s task on `xlarge` costs 90 s of quota. The
+  free tier gets **5 minutes/day** (unauthenticated 2, PRO 40 + $1/10 min beyond). This corrects the
+  earlier note that the *declared* duration drives the charge: the declared duration sets the maximum
+  runtime per call and improves queue priority, and the charge follows actual use. A 2B at ~5 s per
+  answer is therefore tens of requests/day on `large`, which is the number to state in the report.
+- **ZeroGPU is Gradio-SDK only**, PyTorch 2.8+ (3.12.12 / 3.10.13 available), and models must be moved
+  to `cuda` at module level — CUDA is emulated outside `@spaces.GPU`, so the load itself is free and
+  lazy-loading inside the decorator is explicitly discouraged. `torch.compile` is unsupported.
+- **Hardware selection is a Space setting**, not something the model card declares; the docs' own step
+  list starts with *"Make sure the ZeroGPU hardware is selected in your Space settings."* Creating the
+  repo and pushing the app are API operations; the hardware selection may need the UI, which is the one
+  step that could require a human click.
 
 **R6 — the Compose keys that actually take effect on this engine.**
 
