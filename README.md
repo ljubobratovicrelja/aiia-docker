@@ -11,16 +11,16 @@ graphical interface isolated from the inference in separate Compose services.
 ## What the assignment asks for
 
 - one container running a pre-trained DL model for inference, with the inference call wrapped in
-  a web server (Flask / FastAPI);
+  a web server;
 - a second container running *only* a very simple GUI (gradio) that requests the first;
 - the two isolated via Docker Compose;
 - a report, max 6 pages excluding cover/TOC, including the code and the commands used.
 
-Optional (and the max-grade clauses): train the model for a few epochs, publish it to Hugging
-Face Spaces for API inference, NVIDIA Container Toolkit + training/inference on GPU, or any other
-improvement to the Dockerfile / compose / run parameters.
-
 The official brief is distributed through Moodle and is not redistributed here.
+
+What this repository adds on top: a GPU build target behind a Compose override file, a LoRA
+fine-tune of the served model in `training/`, and the merged checkpoint published on Hugging Face
+with a Gradio Space serving it.
 
 ## Layout
 
