@@ -15,7 +15,7 @@ max-grade bullet's training half. Everything below is measured; the numbers come
 | Corpus | `ise-uiuc/Magicoder-OSS-Instruct-75K`, pinned at revision `5f839b1f…`; 3000 records drawn (seeded) from a 20 000-record scan — **2998 usable** after tokenisation |
 | Schedule | 2 epochs = **374 optimizer steps**; effective batch 2 × 8 = 16 sequences of ≤ 1024 tokens; lr 1e-4 cosine with 20 warm-up steps; seed 43506 |
 | Loss | cross-entropy on **answer tokens only** (prompt masked with `-100`), prompt rendered with the tokenizer's own chat template |
-| Hardware | RTX 3090 Ti 24 GB, off the serving host (reason in [`PROJECT_PLAN.md`](PROJECT_PLAN.md) P4 row) |
+| Hardware | RTX 3090 Ti 24 GB, off the serving host (24 GB is ample for the bf16 LoRA; the Spark's disk was the constraint) |
 | Image | `aiia-docker/training:stage-4`, 38 248 955 946 B — a third, profile-gated Compose service; the serving stack is untouched |
 
 ## Result

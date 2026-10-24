@@ -7,7 +7,7 @@ Append-only, newest block at the bottom, one `## YYYY-MM-DD` block per session.
 
 - **Anything the git log already says.** No "added compose.yaml", no "ran the container", no
   per-commit narration. If `git log --oneline` or a diff answers it, it is noise here.
-- Restatements of the plan (`docs/PROJECT_PLAN.md`) or of the brief (`docs/assignment/`).
+- Restatements of the plan or of the brief.
 - Progress roll-ups. This is a log of *what was learned*, not a status board.
 
 ## What DOES belong here
@@ -29,7 +29,7 @@ development, as the review checkpoint.
 `Qwen3_5ForCausalLM` onto its qwen conversion path, so a Qwen3.5 GGUF is reachable with the
 existing tooling — but whether LoRA *adapters* work on a hybrid Mamba/attention model is an open
 question, not an assumption; it is being verified before the training phase is planned in
-detail. Recorded in `docs/PROJECT_PLAN.md` §6 as risk R1.
+detail. Recorded as risk R1 in the plan.
 **Findings (risk R1 — LoRA on the hybrid arch):** `Qwen/Qwen3.5-2B` is a composite VLM checkpoint
 (`Qwen3_5ForConditionalGeneration`, vision tensors included); the SFT base is
 `Qwen/Qwen3.5-2B-Base` loaded text-only as `Qwen3_5ForCausalLM`, and the two layouts use different

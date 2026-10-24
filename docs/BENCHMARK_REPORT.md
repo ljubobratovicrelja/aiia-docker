@@ -3,7 +3,7 @@
 This is the reading of `evidence/bench-finetune.json` against the fixed suite in
 `bench/prompts.json`. It answers one question: **did the stage-4 LoRA adapter improve the coding
 behaviour it was trained for, and did it degrade anything else?** The method was fixed before the
-run (PROJECT_PLAN §6.3), the numbers below come from a runnable command, and the raw generations
+run, the numbers below come from a runnable command, and the raw generations
 are quoted rather than summarised wherever the reading depends on them.
 
 ## What was measured, in one paragraph
@@ -364,20 +364,17 @@ the adapter demonstrably bought is stylistic.
 **What would change the conclusion.** A larger sample (≥ 20 runs/prompt to put error bars on the
 x/5 counts); an *executed* check — actually run the returned code (`ast.parse` + a tiny unit test per
 code prompt, and a `pytest`-style pass on the validator) instead of reading it, which is the
-`ast.parse`/pass@1 metric PROJECT_PLAN §6.1 R4 already calls for and this suite deliberately did not
+`ast.parse`/pass@1 metric that is still open and that this suite deliberately did not
 run; a temperature-0 or many-sample-majority read on the canaries; and a HumanEval slice to measure
 coding ability on held-out problems rather than ten hand-picked prompts. If a *executed* pass rate on
 the two code-context prompts came out base ≈ tuned, as the qualitative read here predicts, that
 would confirm "the adapter changed style, not correctness."
 
-## Housekeeping (not edited here)
+## Housekeeping
 
-`docs/EVIDENCE.md` row 11 and the P4 row in `docs/PROJECT_PLAN.md` currently describe the
-base-vs-adapter comparison as still **pending** (§6.1 R4's `ast.parse` adherence and HumanEval pass@1
-slice). This report is the qualitative complement to that comparison, not the two metrics those rows
-name — `ast.parse`/pass@1 are still not measured, and this suite did not execute returned code. Those
-rows should be updated to point at `docs/BENCHMARK_REPORT.md` **and** should keep saying the executed
-metrics are open. Left as-is here on purpose.
+This report is the qualitative complement to the base-vs-adapter comparison, not the two executed
+metrics: `ast.parse` adherence and HumanEval pass@1 are still not measured, and this suite did not
+execute returned code. That remains the open item.
 
 ## Reproduce
 

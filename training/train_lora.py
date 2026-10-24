@@ -3,7 +3,7 @@
 
 This runs *off* the serving path: it produces a peft adapter directory, nothing
 else in the stack changes.  The hyperparameters below are the frozen run
-configuration (documented in docs/PROJECT_PLAN.md §P4); scripts/train_lora.sh
+configuration; scripts/train_lora.sh
 launches it and only overrides the values a smoke run has to shrink.
 
 Two decisions are worth stating up front, because both are deviations from the
