@@ -1,0 +1,95 @@
+======================================================================
+host-env.txt — the machine these numbers were taken on
+======================================================================
+machine         : mint (tailscale), relja-linux, x86_64, Linux 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine / compose: 29.9.2 / 5.6.1
+host driver     : 580.178.04
+date            : 2026-10-24T18:56:16+02:00
+repo            : /var/tmp/aiia-mint-measure @ 3067837 (clean rsync of ~/Projects/aiia-docker)
+command         : ssh mint 'bash -s' < probe (uname/nproc/lscpu/nvidia-smi/docker info/git/df)
+
+== uname / os ==
+Linux relja-linux 5.15.0-198-generic #208-Ubuntu SMP Fri Sep 4 10:22:38 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+os              : Linux Mint 21.3
+kernel          : 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor
+cores / threads : 32 / 32
+
+== nvidia-smi ==
+Sat Oct 24 18:56:16 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.178.04             Driver Version: 580.178.04     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 3090 Ti     Off |   00000000:01:00.0  On |                  Off |
+| 33%   46C    P3             67W /  450W |    4286MiB /  24564MiB |     19%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            2031      G   /usr/lib/xorg/Xorg                     2229MiB |
+|    0   N/A  N/A          871932    C+G   handy                                    37MiB |
+|    0   N/A  N/A         2359427      G   /usr/bin/gnome-shell                    190MiB |
+|    0   N/A  N/A         2541455      G   ...rack-uuid=3190708999430457380        122MiB |
+|    0   N/A  N/A         2541461      G   ...rack-uuid=3190709085638307488         92MiB |
+|    0   N/A  N/A         2541467      G   ...rack-uuid=3190723980855539192       1273MiB |
++-----------------------------------------------------------------------------------------+
+
+== docker ==
+Client: Docker Engine - Community
+ Version:           29.9.2
+ API version:       1.56
+ Go version:        go1.26.10
+ Git commit:        a82e528
+ Built:             Tue Oct 20 18:45:02 2026
+ OS/Arch:           linux/amd64
+ Context:           default
+
+Server: Docker Engine - Community
+ Engine:
+  Version:          29.9.2
+  API version:      1.56 (minimum version 1.40)
+  Go version:       go1.26.10
+  Git commit:       0367cbe
+  Built:            Tue Oct 20 18:45:02 2026
+  OS/Arch:          linux/amd64
+  Experimental:     false
+ containerd:
+  Version:          v2.4.2
+  GitCommit:        b7a25261e029d68978bbf290df0a62fc819b3c51
+ runc:
+  Version:          1.5.2
+  GitCommit:        v1.5.2-0-g29dd3dc2
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
+Docker Compose version v5.6.1
+default runtime : runc
+runtimes        : io.containerd.runc.v2, nvidia, runc
+storage driver  : overlayfs
+cgroup version  : 2
+nvidia toolkit  : cli-version: 1.20.1
+
+== repo under measurement ==
+3067837690c004e8bab71f3f34d344d190fe0de0
+?? evidence/mint-3090ti-2026-10-24/
+(empty status above = the rsynced worktree is clean)
+
+== disk ==
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/nvme2n1p2  458G  246G  189G  57% /
+/dev/nvme2n1p2  458G  246G  189G  57% /
+
+Note on $HOME: mint's /home/relja is not writable for the docker CLI, so
+every command in this run was executed with HOME=/var/tmp/mint-home and
+DOCKER_CONFIG=/var/tmp/mint-home/.docker.  This is an environment quirk,
+not a measurement condition: it changes nothing about the engine.

@@ -1,0 +1,138 @@
+======================================================================
+image-sizes-reconciliation.txt — the four numbers an image size can be, and why they differ on this engine
+======================================================================
+machine         : mint (tailscale), relja-linux, x86_64, Linux 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine / compose: 29.9.2 / 5.6.1
+host driver     : 580.178.04
+date            : 2026-10-24T19:18:53+02:00
+repo            : /var/tmp/aiia-mint-measure @ 3067837 (clean rsync of ~/Projects/aiia-docker)
+command         : docker image inspect --format {{.Size}}; docker history --no-trunc; docker save | per-layer gzip size + decompressed file bytes (python3 layer_bytes.py); docker system df -v
+
+WHY THIS FILE EXISTS
+
+On the aarch64 host (gb10) `docker image inspect .Size` agreed with the sum of
+the `docker history` SIZE column to within 1 MB, so evidence/image-sizes.txt
+could decompose an image from its layers and the report could quote .Size as
+'the image size'.  On mint (Engine 29.9.2) that agreement does not hold: .Size
+comes out 23-42 % larger than the layer sum, on our images AND on the upstream
+base images that nobody built here.  A report that quoted .Size on this machine
+while the gb10 artifacts quote the layer sum would look like a 40 % regression
+that never happened, so the four numbers are measured side by side:
+
+  blob_bytes   Σ of the raw gzip layer blobs (what the content store holds) —
+               this is the 'CONTENT SIZE' column of `docker images`.
+  files_bytes  Σ of every regular file's size inside those layers, decompressed
+               (the apparent footprint of the filesystem).
+  history_sum  Σ of `docker history --no-trunc` SIZE — docker's per-layer
+               accounting, which is what scripts/layer_analysis.py adds up.
+  .Size        `docker image inspect --format {{.Size}}`, the number most tools
+               and every report quotes as 'the image size'.
+
+THE IDENTITY FOUND
+
+  .Size  ==  history_sum  +  blob_bytes      (residual < 1 MB in all five images,
+                                              which is the 3-significant-digit
+                                              rounding of the history column)
+
+i.e. on this engine .Size counts each layer's compressed size IN ADDITION to its
+uncompressed size.  On gb10 it did not (CONTENT SIZE there read 0B, and .Size
+matched history_sum).  The comparable number across the two hosts is
+history_sum / files_bytes, not .Size.
+
+======================================================================
+MEASUREMENTS (all five images, same run)
+======================================================================
+
+image	layers	blob_bytes	files_bytes	history_sum	.Size	history+blob	residual
+aiia-docker/inference:stage-1	6	1568537629	2125630063	2175694200	3745056666	3744231829	824837
+aiia-docker/inference:stage-3-gpu	15	3596605965	5365668299	5418076800	9015544582	9014682765	861817
+aiia-docker/gui:stage-1	8	151671271	441747285	491079190	642651219	642750461	-99242
+ghcr.io/ggml-org/llama.cpp:server	5	311167754	849400188	900094200	1211446363	1211261954	184409
+ghcr.io/ggml-org/llama.cpp:server-cuda13	14	2337336088	4084230415	4137076800	6474828317	6474412888	415429
+
+image IDs and .Size in bytes (what was measured, exactly):
+  aiia-docker/inference:stage-1                  sha256:7e2c063c1a183b12564856da44429179ebd0a844419a9d1414c44cb124d891e5 size=3745056666
+  aiia-docker/inference:stage-3-gpu              sha256:00e1bb9229fab0d15f9dbc24356e54eb3e6f92922f0c3dd513b4f4d6ca62df93 size=9015544582
+  aiia-docker/gui:stage-1                        sha256:3e5cb6c946606adfd4b7ad85fba4dc9b651dd349b15d5459bbf76e2f5efa83cc size=642651219
+  ghcr.io/ggml-org/llama.cpp:server              sha256:33868c035b21dc63f7c60b7438774283fd99215bc319114eb03de5df4ce7cd6b size=1211446363
+  ghcr.io/ggml-org/llama.cpp:server-cuda13       sha256:78d0541639f5ed3f463e4bef8284027792e2d74cc2311b7628e17c2a0e7587db size=6474828317
+
+======================================================================
+THE DECOMPOSITION TO USE IN THE REPORT
+======================================================================
+
+  cpu inference image, files:
+    upstream llama.cpp:server base                849,400,188 B  (0.85 GB)
+    + the pinned GGUF (COPY --from=model)       1,280,835,840 B  (1.28 GB)
+    + ENV / WORKDIR / ENTRYPOINT (metadata, 0 B)              0 B  (0.00 GB)
+    + residual: layer bookkeeping, see caveat      -4,605,965 B  (-0.00 GB)
+    = total                                     2,125,630,063 B  (2.13 GB)
+  GGUF share of the image: 60.3%
+
+  gpu inference image, files:
+    upstream server-cuda13 base                 4,084,230,415 B  (4.08 GB)
+    + the same GGUF (shared model stage: no second copy)  1,280,835,840 B  (1.28 GB)
+    + residual: layer bookkeeping, see caveat         602,044 B  (0.00 GB)
+    = total                                     5,365,668,299 B  (5.37 GB)
+
+  gui image, files (total) and where they are, from docker history:
+    total 441,747,285 B
+         12.3kB  COPY app.py . # buildkit
+          357MB  RUN /bin/sh -c pip install --no-cache-dir -r requirements.txt # buildkit
+         12.3kB  COPY requirements.txt . # buildkit
+         8.19kB  WORKDIR /app
+         16.4kB  RUN /bin/sh -c set -eux; for src in idle3 pip3 pydoc3 python3 python3-config; 
+         41.4MB  RUN /bin/sh -c set -eux; savedAptMark="$(apt-mark showmanual)"; apt-get update
+         4.93MB  RUN /bin/sh -c set -eux; apt-get update; apt-get install -y --no-install-recom
+         87.7MB  # debian.sh --arch 'amd64' out/ 'trixie' '@1792531975'
+
+  Cross-host comparison, same quantity (file bytes / history sum), the two
+  numbers the gb10 artifacts reported as .Size:
+    cpu inference : gb10 2,117,416,629 B   mint 2,125,630,063 B (+0.4%)
+    gpu inference : gb10 5,684,548,299 B   mint 5,365,668,299 B (-5.6%)
+    gui           : gb10   461,208,892 B   mint 441,747,285 B (-4.2%)
+
+  The gpu image is smaller than on gb10 because the CUDA base image differs
+  between the two hosts (aarch64 vs amd64 build of the same tag); the GGUF, the
+  gui and the cpu image are within a few percent, which is what reproducibility
+  of an image size across architectures looks like.
+
+======================================================================
+docker system df -v (the store's own per-image accounting, for the record)
+======================================================================
+
+Images space usage:
+
+REPOSITORY                         TAG                       IMAGE ID       CREATED          SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+aiia-docker/inference              stage-3-gpu               00e1bb9229fa   23 minutes ago   9.02GB    6.354GB       2.662GB       1
+aiia-docker/inference              stage-1                   7e2c063c1a18   24 minutes ago   3.75GB    1.259GB       2.486GB       0
+aiia-docker/gui                    stage-1                   3e5cb6c94660   20 hours ago     643MB     2B            642.7MB       1
+aiia-docker/training               stage-4                   538631faa298   3 days ago       38.2GB    38.07GB       183.9MB       0
+ghcr.io/ggml-org/llama.cpp         server-cuda13             78d0541639f5   4 days ago       6.47GB    5.095GB       1.38GB        2
+ghcr.io/ggml-org/llama.cpp         server                    33868c035b21   2 weeks ago      1.21GB    32B           1.211GB       0
+nvcr.io/nvidia/pytorch             26.09-py3                 6e8ccc607fc2   4 weeks ago      38.1GB    38.07GB       87.12kB       0
+valkey/valkey                      9-alpine                  ee91f7a174ac   3 months ago     65.7MB    32B           65.75MB       1
+ghcr.io/github/github-mcp-server   latest                    2763823c63bc   7 months ago     60.4MB    132.8kB       60.32MB       0
+
+======================================================================
+CAVEAT, stated rather than hidden
+======================================================================
+* 'files_bytes' counts regular files only; directories, device nodes and
+  symlinks contribute no bytes here, and whiteouts remove nothing from the
+  number.  It is an apparent size, which is the thing a report means by
+  'the image is 2.1 GB'.
+* 'blob_bytes' is what the content store really holds, i.e. what the disk gives
+  up.  That is the right number for a disk-space claim, and the wrong number
+  for a 'how big is my image' claim.
+* The layer counts differ between history (58 entries for the gpu image) and
+  the manifest (15 layers): history lists metadata-only steps (ENV, WORKDIR,
+  LABEL) as zero-byte entries, and its 3-significant-digit rounding is why the
+  residual above is a few hundred kB rather than 0.
+* The 'layer bookkeeping' residual in the two decompositions (a few MB, 0.2 % of
+  the cpu image) is the difference between summing file bytes base-image + the
+  copied GGUF and measuring the assembled image: a base layer stored as
+  hardlinks or re-packed differs by that much.  It is smaller than the
+  rounding of any figure the report quotes (0.1 GB), which is why the
+  decomposition is presented as GB figures rather than bytes.

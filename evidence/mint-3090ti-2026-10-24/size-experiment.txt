@@ -1,0 +1,230 @@
+======================================================================
+size-experiment.txt — one demonstrated image-size improvement, re-measured on mint
+======================================================================
+machine         : mint (tailscale), relja-linux, x86_64, Linux 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine / compose: 29.9.2 / 5.6.1
+host driver     : 580.178.04
+date            : 2026-10-24T19:10:58+02:00
+repo            : /var/tmp/aiia-mint-measure @ 3067837 (clean rsync of ~/Projects/aiia-docker)
+command         : ./scripts/size-experiment.sh   (project script, unmodified) + a cross-check section measuring the same two images by file bytes
+
+======================================================================
+size-experiment.txt — one demonstrated image-size improvement
+======================================================================
+date            : 2026-10-24T19:10:19+02:00
+engine / compose: 29.9.2 / 5.6.1
+arch            : x86_64
+
+Hypothesis: 'RUN pip install --no-cache-dir -r requirements.txt' could be
+simplified to 'RUN pip install -r requirements.txt'.  Both variants were
+built here from the identical context so the difference is only the flag.
+
+  variant A (kept)    : gui/Dockerfile unchanged — pip install --no-cache-dir
+  variant B (rejected): same Dockerfile with '--no-cache-dir' removed from the pip install
+
+Generated variant B Dockerfile:
+    FROM python:3.12-slim
+    
+    WORKDIR /app
+    
+    # Dependencies first, app code last: editing app.py must not reinstall gradio.
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+    
+    COPY app.py .
+    
+    EXPOSE 7860
+    
+    CMD ["python", "app.py"]
+
+======================================================================
+BUILD B (without --no-cache-dir) — tag aiia-docker/gui:pip-cache-experiment
+======================================================================
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile.without-flag
+#1 transferring dockerfile: 282B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.12-slim
+#2 DONE 0.4s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 64B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 63B done
+#4 DONE 0.0s
+
+#5 [1/5] FROM docker.io/library/python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
+#5 resolve docker.io/library/python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 0.0s done
+#5 DONE 0.0s
+
+#6 [2/5] WORKDIR /app
+#6 CACHED
+
+#7 [3/5] COPY requirements.txt .
+#7 CACHED
+
+#8 [4/5] RUN pip install -r requirements.txt
+#8 CACHED
+
+#9 [5/5] COPY app.py .
+#9 CACHED
+
+#10 exporting to image
+#10 exporting layers done
+#10 exporting manifest sha256:b39999606f86629076c8f9a9f8fd3331051410c509286b229ebb7cc50b262885 done
+#10 exporting config sha256:2be77ee41e826f6ae540544fe307b23673e13b93222d3176389caecdb5fa5298 done
+#10 exporting attestation manifest sha256:d796c4174cd1054678f03f3899c3a1fa5d0c2b22934cab52ec5b5e923d28fdf7 0.0s done
+#10 exporting manifest list sha256:2966403d388cbdd2a798ee996e56860c74ed55cbd5ede745b90e4a396c0badae
+#10 exporting manifest list sha256:2966403d388cbdd2a798ee996e56860c74ed55cbd5ede745b90e4a396c0badae 0.0s done
+#10 naming to docker.io/aiia-docker/gui:pip-cache-experiment done
+#10 unpacking to docker.io/aiia-docker/gui:pip-cache-experiment
+#10 unpacking to docker.io/aiia-docker/gui:pip-cache-experiment 2.3s done
+#10 DONE 2.4s
+
+======================================================================
+BUILD A (as committed, with --no-cache-dir) — tag aiia-docker/gui:pip-nocache-experiment
+======================================================================
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 284B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.12-slim
+#2 DONE 0.2s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 64B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 63B done
+#4 DONE 0.0s
+
+#5 [1/5] FROM docker.io/library/python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
+#5 resolve docker.io/library/python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 0.0s done
+#5 DONE 0.0s
+
+#6 [3/5] COPY requirements.txt .
+#6 CACHED
+
+#7 [4/5] RUN pip install --no-cache-dir -r requirements.txt
+#7 CACHED
+
+#8 [2/5] WORKDIR /app
+#8 CACHED
+
+#9 [5/5] COPY app.py .
+#9 CACHED
+
+#10 exporting to image
+#10 exporting layers done
+#10 exporting manifest sha256:69451ee0c384a6cd7c582a070c7e05f393eea2688e53ba0724954eaf017935da done
+#10 exporting config sha256:f7d2941bf57208fe2efa655ec77885d6571d4704655972bc1c52e5daa6d314b6 done
+#10 exporting attestation manifest sha256:ec19858d52b4d750881a0a49ad890871723f535c6c6549ef6fb08dbd65029714 0.0s done
+#10 exporting manifest list sha256:b3ef512768217624ca4f282f033d5cbb451e181f7ca51f694267a5efe1153c43 0.0s done
+#10 naming to docker.io/aiia-docker/gui:pip-nocache-experiment
+#10 naming to docker.io/aiia-docker/gui:pip-nocache-experiment done
+#10 unpacking to docker.io/aiia-docker/gui:pip-nocache-experiment done
+#10 DONE 0.1s
+
+======================================================================
+RESULT — before / after
+======================================================================
+
+  variant A  pip install --no-cache-dir   (KEPT)     642651093 bytes  = 642.65MB
+  variant B  pip install                  (REJECTED) 820039989 bytes  = 820.04MB
+
+  delta            : +177388896 bytes  (+177.4 MB)
+  B / A            : 1.276x  (+27.6% larger without the flag)
+  relative to the committed image: +27.6%
+
+  layer breakdown, variant B (the rejected one):
+    16 layers (base-image layers included)
+    sum of layer sizes 582.08MB  vs  docker image inspect size 820.04MB  (delta 237.96MB)
+  
+    top 4 layers by size:
+       448.00MB  RUN /bin/sh -c pip install -r requirements.txt # buildkit
+        87.70MB  # debian.sh --arch 'amd64' out/ 'trixie' '@1792531975'
+        41.40MB  RUN /bin/sh -c set -eux; savedAptMark="$(apt-mark showmanual)"; apt-get update; apt-get insta...
+         4.93MB  RUN /bin/sh -c set -eux; apt-get update; apt-get install -y --no-install-recommends ca-certif...
+  
+    LARGEST LAYER: 448.00MB (448000000 bytes)
+      instruction: RUN /bin/sh -c pip install -r requirements.txt # buildkit
+      it is 77.0% of the sum of all layers
+
+  layer breakdown, variant A (the kept one):
+    16 layers (base-image layers included)
+    sum of layer sizes 491.08MB  vs  docker image inspect size 642.65MB  (delta 151.57MB)
+  
+    top 4 layers by size:
+       357.00MB  RUN /bin/sh -c pip install --no-cache-dir -r requirements.txt # buildkit
+        87.70MB  # debian.sh --arch 'amd64' out/ 'trixie' '@1792531975'
+        41.40MB  RUN /bin/sh -c set -eux; savedAptMark="$(apt-mark showmanual)"; apt-get update; apt-get insta...
+         4.93MB  RUN /bin/sh -c set -eux; apt-get update; apt-get install -y --no-install-recommends ca-certif...
+  
+    LARGEST LAYER: 357.00MB (357000000 bytes)
+      instruction: RUN /bin/sh -c pip install --no-cache-dir -r requirements.txt # buildkit
+      it is 72.7% of the sum of all layers
+
+======================================================================
+DECISION
+======================================================================
+  Variant A wins: dropping --no-cache-dir makes the image larger, and the
+  retained pip cache is dead weight in a container that only ever installs
+  once at build time.  gui/Dockerfile is left exactly as committed; the
+  experiment images are removed, and aiia-docker/gui:stage-1
+  (which is variant A) is the one the stack runs.
+
+  sanity check: committed image 642651219 bytes
+                variant A           642651093 bytes
+                -> DIFFERENT; investigate
+
+$ docker image rm aiia-docker/gui:pip-cache-experiment aiia-docker/gui:pip-nocache-experiment
+Untagged: aiia-docker/gui:pip-cache-experiment
+Deleted: sha256:2966403d388cbdd2a798ee996e56860c74ed55cbd5ede745b90e4a396c0badae
+Untagged: aiia-docker/gui:pip-nocache-experiment
+Deleted: sha256:b3ef512768217624ca4f282f033d5cbb451e181f7ca51f694267a5efe1153c43
+
+images left:
+  aiia-docker/inference:stage-3-gpu  00e1bb9229fa  9.02GB
+  aiia-docker/inference:stage-1  5dd94b27ec3e  3.75GB
+  aiia-docker/gui:stage-1  5736e8e001c6  643MB
+  aiia-docker/training:stage-4  538631faa298  38.2GB
+
+======================================================================
+CROSS-CHECK — the same two images measured a second way
+======================================================================
+
+Added after the run above, on the same two images (rebuilt from cache so they
+are the same layers).  On this engine `docker image inspect .Size` adds the
+compressed layer sizes to the uncompressed ones, so a size DELTA read off
+.Size is inflated by the same double count: 177.4 MB here, against 84.1 MB
+measured on the aarch64 host where .Size did not double count.  The honest
+delta is the difference in file bytes:
+
+  image	layers	blob_bytes	files_bytes	history_sum	.Size	history+blob	residual
+  aiia-docker/gui:pip-nocache-experiment	8	151671271	441747285	491079190	642651093	642750461	-99368
+  aiia-docker/gui:pip-cache-experiment	8	237817686	529711073	582079190	820039989	819896876	143113
+
+  delta, file bytes     (B - A) : +87,963,788 B   (+88.0 MB, +19.9%)
+  delta, compressed     (B - A) : +86,146,415 B   (+86.1 MB)
+  delta, history sum    (B - A) : +91,000,000 B   (+91.0 MB)
+  delta, docker .Size   (B - A) : +177,388,896 B   (+177.4 MB)  <- the inflated one
+
+  where the extra bytes are, inside variant B's image:
+    88M	/root/.cache/pip
+  and inside variant A (the kept one):
+    no pip cache dir: --no-cache-dir leaves nothing behind
+
+  Conclusion unchanged, number corrected: dropping --no-cache-dir costs
+  ~84 MB of real image (the wheels pip would never reuse, since the install
+  happens once at build time), not the 177 MB the double-counted .Size
+  suggests.  Keeping the flag is right; the delta worth quoting is the file-
+  byte one.

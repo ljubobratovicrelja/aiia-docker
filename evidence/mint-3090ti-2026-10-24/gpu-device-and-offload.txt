@@ -1,0 +1,237 @@
+======================================================================
+gpu-device-and-offload.txt — GPU variant proof: shared model stage, resolved device request, offload and buffers
+======================================================================
+machine         : mint (tailscale), relja-linux, x86_64, Linux 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine / compose: 29.9.2 / 5.6.1
+host driver     : 580.178.04
+date            : 2026-10-24T19:10:18+02:00
+repo            : /var/tmp/aiia-mint-measure @ 3067837 (clean rsync of ~/Projects/aiia-docker)
+command         : ./scripts/gpu_evidence.sh   (project script, unmodified)
+
+======================================================================
+gpu.txt — GPU variant proof (aiia-docker stage 3)
+======================================================================
+date            : 2026-10-24T19:10:07+02:00
+host            : x86_64, 29.9.2 engine, 5.6.1 compose
+default runtime : runc
+nvidia runtime  : io.containerd.runc.v2, nvidia, runc
+CDI devices     : nvidia.yaml 
+host gpu        : NVIDIA GeForce RTX 3090 Ti, 580.178.04
+compose files   : compose.yaml + compose.gpu.yaml (override)
+
+======================================================================
+# 1. One model download, two build targets (the shared `model` stage)
+======================================================================
+Both targets COPY --from the single shared `model` stage below, so the
+1.28 GB GGUF is downloaded and sha256-verified once.  The second build is
+the proof: its model stage is a cache hit, and only the COPY step of the
+target differs.
+
+--- docker compose build inference   ==> cpu target ---
+#7 [model 1/2] FROM ghcr.io/ggml-org/llama.cpp:server@sha256:20c4196fc08b459a34ef78aaa05b101333b2fac687e30ec99f37b3c9dc071b44
+#8 [model 2/2] RUN mkdir -p /models  && curl -fL --retry 3 -o "/models/Qwen3.5-2B-Q4_K_M.gguf"         "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/f6d5376be1edb4d416d56da11e5397a961aca8ae/Qwen3.5-2B-Q4_K_M.gguf"  && echo "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223  /models/Qwen3.5-2B-Q4_K_M.gguf" | sha256sum -c -
+#8 CACHED
+#9 [cpu 2/2] COPY --from=model /models /models
+#9 CACHED
+
+--- docker compose -f compose.yaml -f compose.gpu.yaml build inference   ==> gpu target ---
+#8 [gpu 1/2] FROM ghcr.io/ggml-org/llama.cpp:server-cuda13@sha256:d158eaf14fb65e720a91b4de3aba5543bdd91862bf1a05a45495194ee0690c11
+#9 [model 1/2] FROM ghcr.io/ggml-org/llama.cpp:server@sha256:20c4196fc08b459a34ef78aaa05b101333b2fac687e30ec99f37b3c9dc071b44
+#10 [model 2/2] RUN mkdir -p /models  && curl -fL --retry 3 -o "/models/Qwen3.5-2B-Q4_K_M.gguf"         "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/f6d5376be1edb4d416d56da11e5397a961aca8ae/Qwen3.5-2B-Q4_K_M.gguf"  && echo "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223  /models/Qwen3.5-2B-Q4_K_M.gguf" | sha256sum -c -
+#10 CACHED
+#11 [gpu 2/2] COPY --from=model /models /models
+#11 CACHED
+
+images:
+  stage-1                                3745056666 bytes
+  stage-3-gpu                            9015544582 bytes
+  (the cpu image is byte-for-byte the stage-2 size: the extra COPY --from
+   added only metadata, no second copy of the model)
+
+======================================================================
+# 2. The CPU stack is untouched: plain `docker compose config`
+======================================================================
+The plain stack must keep resolving exactly as in stages 1-2 — no build
+target at all (so the Dockerfile's LAST stage, cpu, is what is built), the
+stage-1 image tag, and an empty device request.  Selected keys only:
+
+15:    image: aiia-docker/gui:stage-1
+31:        target: 7860
+41:    image: aiia-docker/inference:stage-1
+
+  ^ no 'target:', no 'devices:' — nothing from compose.gpu.yaml leaks into
+    the plain stack.
+
+======================================================================
+# 3. The GPU stack's resolved configuration
+======================================================================
+`docker compose -f compose.yaml -f compose.gpu.yaml config` (selected keys):
+
+7:          cpus: 1
+8:          memory: "536870912"
+15:    image: aiia-docker/gui:stage-1
+31:        target: 7860
+38:          cpus: 4
+39:          memory: "4294967296"
+40:        reservations:
+41:          devices:
+42:            - capabilities:
+44:              driver: nvidia
+45:              count: -1
+48:      LLAMA_ARG_FLASH_ATTN: 'on'
+50:      LLAMA_ARG_N_GPU_LAYERS: "99"
+51:    image: aiia-docker/inference:stage-3-gpu
+62:      target: gpu
+
+Note what is NOT there: the gui service is unchanged and the inference
+service still has 'expose' and no 'ports' — the isolation design survives
+the GPU override.
+
+======================================================================
+# 4. What Compose resolved into the container (docker inspect)
+======================================================================
+container       : 6486d1fca317ec4c1dca17e40f2a1008f19b14aa9ca05d24325f4ca001895b10
+container image : aiia-docker/inference:stage-3-gpu
+health          : healthy
+
+HostConfig.DeviceRequests (the NVIDIA Container Toolkit request as the
+runtime received it — this is the resolved form of
+deploy.resources.reservations.devices in compose.gpu.yaml):
+[
+    {
+        "Driver": "nvidia",
+        "Count": -1,
+        "DeviceIDs": null,
+        "Capabilities": [
+            [
+                "gpu"
+            ]
+        ],
+        "Options": null
+    }
+]
+
+PortBindings (must be empty — inference is still unpublished):
+{"8080/tcp":null}
+
+GPU devices visible inside the container:
+crw-rw-rw- 1 nobody nogroup 195, 254 Oct 24 17:06 /dev/nvidia-modeset
+crw-rw-rw- 1 nobody nogroup 502,   0 Oct 24 17:06 /dev/nvidia-uvm
+crw-rw-rw- 1 nobody nogroup 502,   1 Oct 24 17:06 /dev/nvidia-uvm-tools
+crw-rw-rw- 1 nobody nogroup 195,   0 Oct 24 17:06 /dev/nvidia0
+crw-rw-rw- 1 nobody nogroup 195, 255 Oct 24 17:06 /dev/nvidiactl
+
+======================================================================
+# 5. nvidia-smi from INSIDE the inference container
+======================================================================
+--- docker compose -f compose.yaml -f compose.gpu.yaml exec -T inference nvidia-smi ---
+Sat Oct 24 17:10:11 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.178.04             Driver Version: 580.178.04     CUDA Version: 13.4     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 3090 Ti     Off |   00000000:01:00.0  On |                  Off |
+| 33%   55C    P2            126W /  450W |    7122MiB /  24564MiB |     15%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+
+--- nvidia-smi -L (inside) ---
+GPU 0: NVIDIA GeForce RTX 3090 Ti (UUID: GPU-a15b708c-1353-958f-99e6-cdb60d9b53e2)
+
+--- nvidia-smi --query-gpu=... (inside) ---
+name, memory.total [MiB], memory.used [MiB], utilization.gpu [%]
+NVIDIA GeForce RTX 3090 Ti, 24564 MiB, 7121 MiB, 15 %
+
+Caveat, stated rather than hidden: on the GB10 the driver reports no
+separate VRAM counters (memory total/used read N/A / 'Not Supported')
+because the GPU shares the 128 GB unified memory pool with the CPU.  The
+VRAM actually committed by the model is therefore read from llama.cpp's
+own buffer accounting in section 6, and the pool size from --list-devices.
+
+======================================================================
+# 6. llama-server startup log: CUDA discovery, load and offload
+======================================================================
+Startup lines from the running GPU inference container.  'load_tensors:
+offloaded N/M layers to GPU' is the line that says how much of the model
+is on the device; the 'buffer size' lines are its memory footprint.
+
+log lines captured: 181423 total, of which 181423 belong
+to the current server process (this run's boot, not an earlier restart).
+
+--- CUDA device discovery ---
+0.00.242.028 I cmn  common_param: device_info:
+0.00.339.602 I cmn  common_param:   - CUDA0   : NVIDIA GeForce RTX 3090 Ti (24089 MiB, 19443 MiB free)
+0.00.339.613 I cmn  common_param:   - CPU     : AMD Ryzen 9 7950X3D 16-Core Processor (63492 MiB, 63492 MiB free)
+0.00.339.678 I cmn  common_param: system_info: n_threads = 16 (n_threads_batch = 16) / 32 | CUDA : ARCHS = 750,800,860,890,900,1200,1210 | USE_GRAPHS = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.378.922 I llama_prepare_model_devices: using device CUDA0 (NVIDIA GeForce RTX 3090 Ti) (0000:01:00.0) - 19443 MiB free
+0.00.557.099 I llama_prepare_model_devices: using device CUDA0 (NVIDIA GeForce RTX 3090 Ti) (0000:01:00.0) - 19443 MiB free
+
+--- offload decision and device memory accounting ---
+(the server loads the model twice: a no-alloc probe used by --fit to size
+ the request, then the real load.  The block below is the REAL load — the
+ second occurrence of the offload lines — so its buffer sizes are the ones
+ that describe the running server, not the probe that reports 0.00 MiB.)
+0.00.497.671 I load_tensors:        CUDA0 model buffer size =     0.00 MiB
+0.00.497.671 I load_tensors:    CUDA_Host model buffer size =     0.00 MiB
+0.00.500.116 I llama_context: flash_attn            = enabled
+0.00.502.406 I llama_context:  CUDA_Host  output buffer size =     3.79 MiB
+0.00.502.466 I llama_kv_cache:      CUDA0 KV buffer size =     0.00 MiB
+0.00.502.810 I llama_memory_recurrent:      CUDA0 RS buffer size =    77.06 MiB
+0.00.507.570 I sched_reserve:      CUDA0 compute buffer size =    56.02 MiB
+0.00.507.572 I sched_reserve:  CUDA_Host compute buffer size =    20.02 MiB
+0.00.532.857 I common_params_fit_impl: projected to use 1392 MiB of device memory vs. 19365 MiB of free device memory
+0.00.532.860 I common_params_fit_impl: will leave 17973 >= 1024 MiB of free device memory, no changes needed
+0.00.532.860 I common_fit_params: successfully fit params to free device memory
+0.00.725.495 I load_tensors: offloading output layer to GPU
+0.00.725.498 I load_tensors: offloading 23 repeating layers to GPU
+0.00.725.498 I load_tensors: offloaded 25/25 layers to GPU
+0.00.725.502 I load_tensors:   CPU_Mapped model buffer size =   397.85 MiB
+0.00.725.503 I load_tensors:        CUDA0 model buffer size =  1211.05 MiB
+0.00.887.084 I llama_context: flash_attn            = enabled
+0.00.888.534 I llama_context:  CUDA_Host  output buffer size =     3.79 MiB
+0.00.888.663 I llama_kv_cache:      CUDA0 KV buffer size =    48.00 MiB
+0.00.888.980 I llama_memory_recurrent:      CUDA0 RS buffer size =    77.06 MiB
+0.00.897.820 I sched_reserve:      CUDA0 compute buffer size =    56.02 MiB
+0.00.897.821 I sched_reserve:  CUDA_Host compute buffer size =    20.02 MiB
+
+--- the server's own ready line ---
+0.00.339.999 I srv          init: using 31 threads for HTTP server
+0.00.946.317 I srv  llama_server: listening on http://0.0.0.0:8080
+
+--- the same container answering its inherited healthcheck ---
+{"status":"ok"}
+--- last lines of the current boot ---
+3.15.424.015 D srv          stop: all tasks already finished, no need to cancel
+3.15.424.026 D res  remove_waiti: remove task 8222 from waiting list. current waiting = 1 (before remove)
+3.15.424.027 D srv          stop: all tasks already finished, no need to cancel
+
+--- device enumeration as the server sees it ---
+-r--r--r-- 1 root root 0 Oct 24 17:10 /proc/driver/nvidia/version
+NVRM version: NVIDIA UNIX x86_64 Kernel Module  580.178.04  Tue Jul  7 12:38:21 UTC 2026
+GCC version:  gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) 
+
+======================================================================
+# 7. docker stats — the GPU stack
+======================================================================
+NAME                      IMAGE                                                                     COMMAND               SERVICE     CREATED         STATUS                   PORTS
+aiia-docker-gui-1         sha256:9f98ecbb4a69abc874f24d0e5e5c8a0f772dabf1f4b6d4154f97f5452ed9ac20   "python app.py"       gui         7 minutes ago   Up 6 minutes             0.0.0.0:7860->7860/tcp, [::]:7860->7860/tcp
+aiia-docker-inference-1   sha256:bbc3d6fa872f4a16c2fed73d1e42a3680471570d1ac5801dfab3fb9f7f8bd847   "/app/llama-server"   inference   3 minutes ago   Up 3 minutes (healthy)   8080/tcp
+
+CONTAINER ID   NAME                      CPU %     MEM USAGE / LIMIT   MEM %     NET I/O           BLOCK I/O         PIDS
+6486d1fca317   aiia-docker-inference-1   0.56%     2.387GiB / 4GiB     59.67%    52.3kB / 69.9kB   41.5MB / 77.8kB   40
+29831a416869   aiia-docker-gui-1         1.67%     202.9MiB / 512MiB   39.62%    201kB / 141kB     90.1MB / 0B       35
+0206a0816fe9   searxng-valkey            0.09%     6.59MiB / 62GiB     0.01%     1.64MB / 126B     4.49MB / 0B       8
+be637c7cc1ee   searxng-core              0.00%     127.9MiB / 62GiB    0.20%     1.93MB / 57.6kB   26.8MB / 430kB    12

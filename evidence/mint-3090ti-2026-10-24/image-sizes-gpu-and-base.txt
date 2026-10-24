@@ -1,0 +1,188 @@
+======================================================================
+image-sizes-gpu-and-base.txt — GPU image and upstream base images: bytes, layers, and the layer arithmetic
+======================================================================
+machine         : mint (tailscale), relja-linux, x86_64, Linux 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine / compose: 29.9.2 / 5.6.1
+host driver     : 580.178.04
+date            : 2026-10-24T19:22:12+02:00
+repo            : /var/tmp/aiia-mint-measure @ 3067837 (clean rsync of ~/Projects/aiia-docker)
+command         : docker image ls; docker image inspect --format '{{.Size}}'; python3 scripts/layer_analysis.py; docker history (compact)
+
+The project script (evidence/mint-3090ti-2026-10-24/image-sizes.txt) covers the
+cpu target and the gui.  This file covers the two things it does not: the gpu
+target and both upstream llama.cpp base images, in the same byte-exact form.
+
+READ WITH: image-sizes-reconciliation.txt, which measures the same five images
+four different ways.  Short version: on this engine `docker image inspect
+.Size` adds each layer's compressed size to its uncompressed size, so .Size
+(9.02GB for the gpu image) is NOT the image's footprint (5.37GB of files).
+Both are printed below; the reconciliation file proves the identity.
+
+======================================================================
+A. docker images (full listing)
+======================================================================
+
+IMAGE                                      ID             DISK USAGE   CONTENT SIZE   EXTRA
+aiia-docker/gui:stage-1                    3e5cb6c94660        643MB          152MB   U    
+aiia-docker/inference:stage-1              7e2c063c1a18       3.75GB         1.57GB        
+aiia-docker/inference:stage-3-gpu          00e1bb9229fa       9.02GB          3.6GB   U    
+aiia-docker/training:stage-4               538631faa298       38.2GB         11.7GB        
+denoland/deno:distroless                   9c76b672638b        203MB           59MB        
+ghcr.io/ggml-org/llama.cpp:server          33868c035b21       1.21GB          311MB        
+ghcr.io/ggml-org/llama.cpp:server-cuda13   78d0541639f5       6.47GB         2.34GB   U    
+ghcr.io/github/github-mcp-server:latest    2763823c63bc       60.4MB         15.2MB        
+ghcr.io/open-webui/open-webui:main         000b87a6ae72        6.2GB         1.59GB   U    
+ljubobratovicrelja/mira-training:latest    79ba613d6759       23.3GB         7.96GB        
+ljubobratovicrelja/tensor-truth:0.2.0      b7b903a29dff       14.2GB         4.82GB   U    
+loom-examples:latest                       ef7e27b5540e       2.67GB          619MB   U    
+mira-training:latest                       79ba613d6759       23.3GB         7.96GB        
+nvcr.io/nvidia/pytorch:26.09-py3           6e8ccc607fc2       38.1GB         11.7GB        
+nvidia/cuda:12.4.1-base-ubuntu22.04        0f6bfcbf267e        318MB         62.2MB        
+ollama/ollama:latest                       2c9595c555fd       6.14GB         2.17GB   U    
+searxng/searxng:latest                     35e3520e5362        303MB         75.6MB   U    
+tensortruth-executor:latest                4ef4044d67f0       1.93GB          414MB   U    
+ubuntu:22.04                               104ae83764a5        119MB         31.5MB        
+valkey/valkey:9-alpine                     ee91f7a174ac       65.7MB         18.8MB   U    
+
+======================================================================
+B. docker image inspect --format '{{.Size}}' — bytes, and what they mean here
+======================================================================
+
+  aiia-docker/inference:stage-1                      3745056666 bytes     3.75GB
+  aiia-docker/inference:stage-3-gpu                  9015544582 bytes     9.02GB
+  aiia-docker/gui:stage-1                             642651219 bytes      643MB
+  ghcr.io/ggml-org/llama.cpp:server                  1211446363 bytes     1.21GB
+  ghcr.io/ggml-org/llama.cpp:server-cuda13           6474828317 bytes     6.47GB
+
+  Reminder: the CONTENT SIZE column of 'docker images' (and the CONTENT SIZE
+  figure 0B quoted in the gb10-era artifact) is not the image size; the
+  authoritative byte count is inspect's .Size, and the authoritative
+  footprint is file bytes (see the reconciliation file).
+
+======================================================================
+C. Where the bytes are — largest layers, gpu image and the CUDA base
+======================================================================
+
+--- aiia-docker/inference:stage-3-gpu ---
+  58 layers (base-image layers included)
+  sum of layer sizes 5.42GB  vs  docker image inspect size 9.02GB  (delta 3.60GB)
+
+  top 8 layers by size:
+       2.56GB  RUN |1 TARGETARCH=amd64 /bin/sh -c apt-get update && apt-get install -y --no-install-recommen...
+       1.28GB  COPY /models /models # buildkit
+     757.00MB  RUN |5 BUILD_DATE=2026-10-24T07:21:02Z APP_VERSION=b11854 APP_REVISION=8e5a58df87ab59dfceb5b9...
+     493.00MB  RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=20260914 /bin/sh -c apt-get update && if apt-cache p...
+     210.00MB  COPY /app/lib/ /app # buildkit
+      87.60MB  /bin/sh -c #(nop) ADD file:de4937ce3dfc7c89f05f1503c52434f0a631ac84995f0df65eed0754e5c97d48 in /
+      28.20MB  RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=20260914 /bin/sh -c echo "IMAGE_UPGRADE_ID=${IMAGE_U...
+       1.81MB  RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=20260914 /bin/sh -c apt-get update && apt-get instal...
+
+  LARGEST LAYER: 2.56GB (2560000000 bytes)
+    instruction: RUN |1 TARGETARCH=amd64 /bin/sh -c apt-get update && apt-get install -y --no-install-recommends cuda-libraries-13-4=${NV_CUDA_LIB_VERSION} ${NV_LIBNPP_PACKAGE} cuda-nvtx-13-4=${NV_NVTX_VERSION} libcus
+    it is 47.2% of the sum of all layers
+
+--- ghcr.io/ggml-org/llama.cpp:server-cuda13 ---
+  56 layers (base-image layers included)
+  sum of layer sizes 4.14GB  vs  docker image inspect size 6.47GB  (delta 2.34GB)
+
+  top 8 layers by size:
+       2.56GB  RUN |1 TARGETARCH=amd64 /bin/sh -c apt-get update && apt-get install -y --no-install-recommen...
+     757.00MB  RUN |5 BUILD_DATE=2026-10-20T04:32:16Z APP_VERSION=b11749 APP_REVISION=1d88cb05f1a257f9074153...
+     493.00MB  RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=20260914 /bin/sh -c apt-get update && if apt-cache p...
+     209.00MB  COPY /app/lib/ /app # buildkit
+      87.60MB  /bin/sh -c #(nop) ADD file:de4937ce3dfc7c89f05f1503c52434f0a631ac84995f0df65eed0754e5c97d48 in /
+      28.20MB  RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=20260914 /bin/sh -c echo "IMAGE_UPGRADE_ID=${IMAGE_U...
+       1.81MB  RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=20260914 /bin/sh -c apt-get update && apt-get instal...
+     266.00kB  RUN |1 TARGETARCH=amd64 /bin/sh -c apt-mark hold ${NV_LIBCUBLAS_PACKAGE_NAME} ${NV_LIBNCCL_PA...
+
+  LARGEST LAYER: 2.56GB (2560000000 bytes)
+    instruction: RUN |1 TARGETARCH=amd64 /bin/sh -c apt-get update && apt-get install -y --no-install-recommends cuda-libraries-13-4=${NV_CUDA_LIB_VERSION} ${NV_LIBNPP_PACKAGE} cuda-nvtx-13-4=${NV_NVTX_VERSION} libcus
+    it is 61.9% of the sum of all layers
+
+--- aiia-docker/inference:stage-1 ---
+  21 layers (base-image layers included)
+  sum of layer sizes 2.18GB  vs  docker image inspect size 3.75GB  (delta 1.57GB)
+
+  top 8 layers by size:
+       1.28GB  COPY /models /models # buildkit
+     763.00MB  RUN |5 BUILD_DATE=2026-10-24T07:20:53Z APP_VERSION=b11854 APP_REVISION=8e5a58df87ab59dfceb5b9...
+      87.60MB  /bin/sh -c #(nop) ADD file:7121eb4a5ba391efb4ba9a38c532d1c5dc2d22d276f04e062f357eea36ee62c4 in /
+      45.00MB  COPY /app/lib/ /app # buildkit
+      90.10kB  COPY /app/full/llama /app/full/llama-server /app/ # buildkit
+       4.10kB  WORKDIR /app
+           0B  LABEL org.opencontainers.image.created=2026-10-24T07:20:53Z org.opencontainers.image.version=...
+           0B  HEALTHCHECK {Test:[CMD curl -f http://localhost:8080/health] Interval:0s Timeout:0s StartPeri...
+
+  LARGEST LAYER: 1.28GB (1280000000 bytes)
+    instruction: COPY /models /models # buildkit
+    it is 58.8% of the sum of all layers
+
+======================================================================
+D. docker history of the gpu image (compact; instruction column truncated)
+======================================================================
+
+The layers below are the ones the Dockerfile adds on top of the CUDA base:
+the model COPY (1.28GB) and the ENV block.  Everything above it in the table
+belongs to ghcr.io/ggml-org/llama.cpp:server-cuda13.
+
+IMAGE          CREATED          CREATED BY                                      SIZE      COMMENT
+00e1bb9229fa   24 minutes ago   ENV LLAMA_ARG_MODEL=/models/Qwen3.5-2B-Q4_K_…   0B        buildkit.dockerfile.v0
+<missing>      24 minutes ago   COPY /models /models # buildkit                 1.28GB    buildkit.dockerfile.v0
+<missing>      9 hours ago      ENTRYPOINT ["/app/llama-server"]                0B        buildkit.dockerfile.v0
+<missing>      9 hours ago      HEALTHCHECK {Test:[CMD curl -f http://localh…   0B        buildkit.dockerfile.v0
+<missing>      9 hours ago      WORKDIR /app                                    4.1kB     buildkit.dockerfile.v0
+<missing>      9 hours ago      COPY /app/full/llama /app/full/llama-server …   90.1kB    buildkit.dockerfile.v0
+<missing>      9 hours ago      ENV LLAMA_ARG_PORT=8080                         0B        buildkit.dockerfile.v0
+<missing>      9 hours ago      ENV LLAMA_ARG_HOST=0.0.0.0                      0B        buildkit.dockerfile.v0
+<missing>      9 hours ago      COPY /app/lib/ /app # buildkit                  210MB     buildkit.dockerfile.v0
+<missing>      10 hours ago     RUN |5 BUILD_DATE=2026-10-24T07:21:02Z APP_V…   757MB     buildkit.dockerfile.v0
+<missing>      10 hours ago     LABEL org.opencontainers.image.created=2026-…   0B        buildkit.dockerfile.v0
+<missing>      10 hours ago     ARG IMAGE_SOURCE=https://github.com/ggml-org…   0B        buildkit.dockerfile.v0
+<missing>      10 hours ago     ARG IMAGE_URL=https://github.com/ggml-org/ll…   0B        buildkit.dockerfile.v0
+<missing>      10 hours ago     ARG APP_REVISION=8e5a58df87ab59dfceb5b961ae2…   0B        buildkit.dockerfile.v0
+<missing>      10 hours ago     ARG APP_VERSION=b11854                          0B        buildkit.dockerfile.v0
+<missing>      10 hours ago     ARG BUILD_DATE=2026-10-24T07:21:02Z             0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENTRYPOINT ["/opt/nvidia/nvidia_entrypoint.s…   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NVIDIA_PRODUCT_NAME=CUDA                    0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      COPY nvidia_entrypoint.sh /opt/nvidia/ # bui…   16.4kB    buildkit.dockerfile.v0
+<missing>      5 weeks ago      COPY entrypoint.d/ /opt/nvidia/entrypoint.d/…   45.1kB    buildkit.dockerfile.v0
+<missing>      5 weeks ago      RUN |1 TARGETARCH=amd64 /bin/sh -c apt-mark …   266kB     buildkit.dockerfile.v0
+<missing>      5 weeks ago      RUN |1 TARGETARCH=amd64 /bin/sh -c apt-get u…   2.56GB    buildkit.dockerfile.v0
+<missing>      5 weeks ago      LABEL maintainer=NVIDIA CORPORATION <cudatoo…   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ARG TARGETARCH                                  0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_LIBNCCL_PACKAGE=libnccl2=2.31.2-1+cud…   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NCCL_VERSION=2.31.2-1                       0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_LIBNCCL_PACKAGE_VERSION=2.31.2-1         0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_LIBNCCL_PACKAGE_NAME=libnccl2            0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_LIBCUBLAS_PACKAGE=libcublas-13-4=13.7…   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_LIBCUBLAS_VERSION=13.7.0.27-1            0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_LIBCUBLAS_PACKAGE_NAME=libcublas-13-4    0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_LIBCUSPARSE_VERSION=12.8.6.49-1          0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_LIBNPP_PACKAGE=libnpp-13-4=13.2.0.35-1   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_LIBNPP_VERSION=13.2.0.35-1               0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_NVTX_VERSION=13.4.49-1                   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_CUDA_LIB_VERSION=13.4.1-1                0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NVIDIA_DRIVER_CAPABILITIES=compute,utili…   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NVIDIA_VISIBLE_DEVICES=all                  0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      COPY NGC-DL-CONTAINER-LICENSE / # buildkit      24.6kB    buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib:/u…   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV PATH=/usr/local/nvidia/bin:/usr/local/cu…   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=202…   16.4kB    buildkit.dockerfile.v0
+<missing>      5 weeks ago      RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=202…   4.1kB     buildkit.dockerfile.v0
+<missing>      5 weeks ago      RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=202…   493MB     buildkit.dockerfile.v0
+<missing>      5 weeks ago      RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=202…   1.81MB    buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV CUDA_VERSION=13.4.1                         0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      RUN |2 TARGETARCH=amd64 IMAGE_UPGRADE_ID=202…   28.2MB    buildkit.dockerfile.v0
+<missing>      5 weeks ago      ARG IMAGE_UPGRADE_ID=0                          0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      LABEL maintainer=NVIDIA CORPORATION <cudatoo…   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ARG TARGETARCH                                  0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NV_CUDA_CUDART_VERSION=13.4.49-1            0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NVIDIA_REQUIRE_CUDA=cuda>=13.4 brand=unk…   0B        buildkit.dockerfile.v0
+<missing>      5 weeks ago      ENV NVARCH=x86_64                               0B        buildkit.dockerfile.v0
+<missing>      6 weeks ago      /bin/sh -c #(nop)  CMD ["/bin/bash"]            0B        
+<missing>      6 weeks ago      /bin/sh -c #(nop) ADD file:de4937ce3dfc7c89f…   87.6MB    
+<missing>      6 weeks ago      /bin/sh -c #(nop)  LABEL org.opencontainers.…   0B        
+<missing>      6 weeks ago      /bin/sh -c #(nop)  ARG LAUNCHPAD_BUILD_ARCH     0B        
+<missing>      6 weeks ago      /bin/sh -c #(nop)  ARG RELEASE                  0B        

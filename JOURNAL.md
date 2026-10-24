@@ -360,3 +360,88 @@ the PORTS column of a service that declares no `ports:` and no `expose:` at all.
 — Compose publishes only what `ports:` maps, and there is no mapping here — but the column reads like
 one, which is the kind of detail that turns a correct claim ("the trainer has no interface") into a
 contested one during a review. Worth one sentence in the artifact rather than a silent confusion.
+
+## 2026-10-24
+
+**Why this block exists (re-measurement, same host, new evidence):** the numbers the report quotes for
+the RTX 3090 Ti were taken on that machine but were never committed — `evidence/` carried only the
+aarch64 DGX Spark (`gb10`) artifacts, while the report says "3090 Ti". Re-measured everything on mint
+(Ryzen 9 7950X3D, RTX 3090 Ti 24 GB, driver 580.178.04, Engine 29.9.2 / Compose 5.6.1) from a clean
+worktree, with the project's own scripts unmodified, into `evidence/mint-3090ti-2026-10-24/`. Nothing in
+that directory is copied from the gb10 artifacts, and none of the gb10-era files were touched.
+
+**Finding (the size number the report would have quoted is wrong on this engine):**
+`docker image inspect --format {{.Size}}` reports **9 015 544 582 B** for the GPU image and
+**3 745 056 666 B** for the CPU one, but the images are **5 365 668 299 B** and **2 125 630 063 B** of
+files. The identity measured on all five images (ours and the two upstream bases nobody built here) is
+`.Size = Σ(docker history SIZE) + Σ(compressed layer blobs)`, residual under 1 MB — i.e. on this engine
+`.Size` counts each layer's compressed size *in addition to* its uncompressed size. It did not do that on
+gb10, where `CONTENT SIZE` read `0B` and `.Size` matched the layer sum to within 1 MB, which is exactly
+why the stage-2 arithmetic was sound there and is not here. Cross-host, the same quantity reproduces:
+cpu 2 117 416 629 → 2 125 630 063 B (+0.4 %), gui 461 208 892 → 441 747 285 B (−4.2 %), gpu
+5 684 548 299 → 5 365 668 299 B (−5.6 %, different CUDA base per architecture). **Lesson: a size claim
+has to name its instrument** — `.Size`, history sum, file bytes and stored blobs are four different
+numbers that agree to within 1 % on one host and differ by 40 % on another. `image-sizes-reconciliation.txt`
+prints all four per image plus the identity, so the report can decompose honestly: the GGUF is 60.3 % of
+the CPU image (gb10 said 60.5 %) and the CUDA base is 76 % of the GPU image.
+
+**Finding (the throughput previously quoted for this host does not reproduce):** measured
+**281.51 tok/s** median on the isolated GPU path (pooled 277.40, executions 278.97 and 296.74) and
+**258.89** through the GUI, against the **320.7** the README carried. CPU: **9.53 tok/s** median
+(pooled 9.32) against the 10.0 quoted. The 320.7 figure has no committed artifact behind it and did not
+reappear in 6 GPU runs on an idle-ish desktop; the honest claim is ~280 tok/s, ~29× the CPU rate, not
+320. A detail that differs from gb10 and is worth knowing: on the 3090 Ti the isolated probe returned
+**62 completion tokens on all six GPU runs** (temperature 0), so the "deterministic within an execution,
+not across executions" caveat from stage 3 did not reproduce here — the GPU-vs-CPU near-tie that flipped
+on GB10 does not flip on this card at this build. (The GUI path's counts still vary, 33-75, for the
+unrelated reason that `gui/app.py` samples at temperature 0.7.) The `EXECUTIONS=2` structure stays: it is
+what would have shown the drift if it were there.
+
+**Finding (the --no-cache-dir saving is ~88 MB, not 177 MB, and the difference is the same double count):**
+`size-experiment.sh` built both variants and its own `.Size` delta reads **+177 388 896 B (+27.6 %)**.
+Measured by file bytes the same two images differ by **+87 963 788 B (+88.0 MB, +19.9 %)**, and the
+extra bytes are exactly `/root/.cache/pip` (**88 MB** in the variant without the flag, absent in the one
+with it). The gb10 number was 84.1 MB. The decision is unchanged; the number worth quoting is 88 MB, and
+the experiment script now has a cross-check section that says so.
+
+**Finding (device memory: what the model costs vs what the device counter says):** this 3090 Ti also
+drives the desktop, whose Xorg/gnome/compositor clients hold ~4.7 GiB of the 24 GiB, so the device-wide
+`Memory-Usage` (6.4-6.9 GiB) is not the model. The numbers that are the model: `load_tensors: offloaded
+25/25 layers to GPU`, `CUDA0 model buffer size = 1211.05 MiB` + `KV 48.00` + `recurrent 77.06` +
+`compute 56.02` against llama.cpp's own `projected to use 1392 MiB`, and the driver's per-process figure
+**1698 MiB** for `/app/llama-server`. Unlike GB10 all of these counters exist here. Memory does **not**
+grow during generation — buffers and the KV cache for `n_ctx=4096` are allocated at load and reused, so
+"during" and "after" are the same figure and only utilization moves (6-8 % idle → 94-95 % generating). A
+sampler at 0.2 s resolution is useless here for a different reason than on GB10: one measured request
+finishes in **0.2 s**, so the window had to be widened with 10 back-to-back runs and one forced
+`ignore_eos` generation. First attempt produced five samples and a flat line that proved nothing.
+
+**Finding (RSS is a range on the GPU stack, and page cache is why):** under load the CPU stack's
+`inference` sits at **929 MiB** (gui path) to **1.026 GiB** (isolated path) against its resolved 4 GiB
+limit, and `gui` at **201 MiB** of 512 MiB — the limits Compose actually applied are
+`Memory 4 294 967 296 / NanoCpus 4 000 000 000` and `536 870 912 / 1 000 000 000`, read off
+`.HostConfig`, not off the yaml. The GPU stack's `inference` reads **767-807 MiB** under load — less
+than the CPU container, because the weights are on the device — but `gpu_evidence.sh` captured
+**2.387 GiB** for the same container minutes earlier. Both are true: `docker stats` reports the cgroup's
+`memory.usage_in_bytes`, which includes page cache for llama.cpp's mmap'd GGUF (`CPU_Mapped model buffer
+= 397.85 MiB`), so the figure drifts with cache residency. Quote the under-load value with the limit
+beside it, and the device number for the model; do not quote a single RSS as a constant.
+
+**Notes (cache and isolation, re-verified on a second architecture/engine):** every cache expectation in
+`cache_demo.sh` passed on amd64/Engine 29.9.2 — including the two that are counter-intuitive: a bare
+`touch app.py` leaves **every** step CACHED (COPY is keyed on content digest, not mtime), and changing a
+runtime `ENV` in `inference/Dockerfile` re-runs the ENV step while the **model layer stays CACHED**, so no
+1.28 GB re-download. Port isolation unchanged on both stacks: `HostConfig.PortBindings {}` and
+`NetworkSettings.Ports {"8080/tcp": null}` for `inference`, `7860` published on `0.0.0.0` and `::` for
+`gui`, and `ss -ltnp` shows only the two gradio sockets.
+
+**Notes (two environment quirks that cost time, worth not rediscovering):** (a) mint's `/home` is not
+writable for the Docker CLI, so every docker command needs `HOME=/var/tmp/mint-home
+DOCKER_CONFIG=/var/tmp/mint-home/.docker` or it dies with "mkdir /home/relja/.docker: permission
+denied" — and the login shell is **fish**, which rejects `VAR=value` and mangles compound commands, so
+scripts have to be piped to `bash -s`. (b) That piping has a trap of its own: `ssh mint 'bash -s' <
+script.sh` feeds the script through stdin, and the *first* command inside it that reads stdin (here
+`bench.sh`, via its probe) swallows the rest of the script — the run stopped silently after the first
+section with no error. Running the script as a file (`scp` then `bash /var/tmp/x.sh`) is the reliable
+form. Same family as the earlier backtick and VRAM-sampler bugs: the failure was silent and the artifact
+looked plausible.

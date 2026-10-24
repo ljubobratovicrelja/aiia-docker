@@ -32,8 +32,12 @@ docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
 the device reservation and the offload settings. Both targets build from one shared model stage, so
 switching does not re-download the 1.28 GB GGUF.
 
-The fixed prompt runs at 8.9 tokens/s on CPU and 134.4 on a DGX Spark (GB10); on an RTX 3090 Ti, 10.0
-and 320.7. Logs and full tables in [`evidence/`](evidence/).
+The fixed prompt runs at 8.9 tokens/s on the GB10's CPU and 9.5 on the 3090 Ti's; on the GPU, 134.4
+(GB10) and 281.5 (RTX 3090 Ti), median over 3 runs per route — 6 on the GPU. Logs and full tables in
+[`evidence/`](evidence/); the 3090 Ti run is [`evidence/mint-3090ti-2026-10-24/`](evidence/mint-3090ti-2026-10-24/),
+and `README.txt` there maps each artifact to the number it supports. Images are 2.13 GB (cpu target),
+5.37 GB (gpu target) and 442 MB (gui) of files — *not* the 3.75 / 9.02 / 0.64 GB that
+`docker image inspect .Size` reports on that engine; `image-sizes-reconciliation.txt` shows why.
 
 ## Training
 
@@ -77,3 +81,11 @@ Every artifact in `evidence/` is produced by a script in `scripts/`: `bench.sh` 
 (throughput), `cache_demo.sh` (layer cache), `image-sizes.sh` and `size-experiment.sh` (image size),
 `gpu_evidence.sh` (device and offload), `train_smoke.sh` and `train_record.sh` (training),
 `bench_finetune.sh` and `analyze_bench_finetune.py` (base vs adapter).
+
+Two host-specific directories hold re-measurements taken on the machine the report describes, and say so
+in their own `README.txt`: `evidence/gpu-3090ti/` (the first 3090 Ti run) and
+`evidence/mint-3090ti-2026-10-24/` (the re-measurement, including four artifacts that have no script
+because they are one-off observations — the host's own `nvidia-smi`/`docker version` output, RSS against
+the resolved cgroup limits, device memory sampled during generation, and the resolved port bindings). Each
+of those four prints the pipeline that produced it in its header.
+

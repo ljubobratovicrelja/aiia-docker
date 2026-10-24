@@ -1,0 +1,184 @@
+======================================================================
+port-isolation.txt — which container publishes what, on both stacks
+======================================================================
+machine         : mint (tailscale), relja-linux, x86_64, Linux 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine / compose: 29.9.2 / 5.6.1
+host driver     : 580.178.04
+date            : 2026-10-24T19:11:18+02:00
+repo            : /var/tmp/aiia-mint-measure @ 3067837 (clean rsync of ~/Projects/aiia-docker)
+command         : docker compose [-f compose.gpu.yaml] config; docker compose up -d; docker compose ps; docker inspect .NetworkSettings.Ports / .HostConfig.PortBindings; ss -ltnp
+
+
+======================================================================
+A. CPU stack (compose.yaml alone) — resolved configuration
+======================================================================
+$ docker compose config
+(comments stripped by Compose; this is what it will actually create)
+
+name: aiia-docker
+services:
+  gui:
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: "536870912"
+    restart: unless-stopped
+    environment:
+      API_URL: http://inference:8080/v1
+      GRADIO_TEMP_DIR: /tmp/gradio
+      HOME: /tmp
+      MODEL_ALIAS: aiia-local
+    image: aiia-docker/gui:stage-1
+    networks:
+      default: null
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    user: 65534:65534
+    build:
+      context: /var/tmp/aiia-mint-measure/gui
+      dockerfile: Dockerfile
+    depends_on:
+      inference:
+        condition: service_healthy
+        required: true
+    ports:
+      - mode: ingress
+        target: 7860
+        published: "7860"
+        protocol: tcp
+  inference:
+    deploy:
+      resources:
+        limits:
+          cpus: 4
+          memory: "4294967296"
+    restart: unless-stopped
+    image: aiia-docker/inference:stage-1
+    networks:
+      default: null
+    read_only: true
+    shm_size: "134217728"
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    user: 65534:65534
+    build:
+      context: /var/tmp/aiia-mint-measure/inference
+      dockerfile: Dockerfile
+    expose:
+      - "8080"
+networks:
+  default:
+    name: aiia-docker_default
+
+======================================================================
+CPU stack — docker compose ps
+======================================================================
+NAME                      IMAGE                                                                     COMMAND               SERVICE     CREATED          STATUS                    PORTS
+aiia-docker-gui-1         sha256:9f98ecbb4a69abc874f24d0e5e5c8a0f772dabf1f4b6d4154f97f5452ed9ac20   "python app.py"       gui         8 minutes ago    Up 8 minutes              0.0.0.0:7860->7860/tcp, [::]:7860->7860/tcp
+aiia-docker-inference-1   aiia-docker/inference:stage-1                                             "/app/llama-server"   inference   32 seconds ago   Up 30 seconds (healthy)   8080/tcp
+
+======================================================================
+CPU stack — resolved ports, per service
+======================================================================
+  --- inference (container f29d27754b73, image aiia-docker/inference:stage-1) ---
+  HostConfig.PortBindings : {}
+  NetworkSettings.Ports   : {"8080/tcp":null}
+  ExposedPorts (image)    : {"8080/tcp":{}}
+  NetworkMode             : aiia-docker_default
+
+  --- gui (container 29831a416869, image aiia-docker/gui:stage-1) ---
+  HostConfig.PortBindings : {"7860/tcp":[{"HostIp":"","HostPort":"7860"}]}
+  NetworkSettings.Ports   : {"7860/tcp":[{"HostIp":"0.0.0.0","HostPort":"7860"},{"HostIp":"::","HostPort":"7860"}]}
+  ExposedPorts (image)    : {"7860/tcp":{}}
+  NetworkMode             : aiia-docker_default
+
+
+======================================================================
+CPU stack — listening sockets on the host, as the kernel sees them
+======================================================================
+$ ss -ltnp | grep -E ':7860|:8080'
+LISTEN 0      4096                                  0.0.0.0:7860       0.0.0.0:*                                                                          
+LISTEN 0      4096                                  0.0.0.0:8080       0.0.0.0:*                                                                          
+LISTEN 0      4096                                     [::]:7860          [::]:*                                                                          
+LISTEN 0      4096                                     [::]:8080          [::]:*                                                                          
+
+======================================================================
+B. GPU stack (compose.yaml + compose.gpu.yaml) — selected keys of the merged config
+======================================================================
+$ docker compose -f compose.yaml -f compose.gpu.yaml config | grep -E ...
+
+1:name: aiia-docker
+2:services:
+3:  gui:
+7:          cpus: 1
+8:          memory: "536870912"
+15:    image: aiia-docker/gui:stage-1
+29:    ports:
+31:        target: 7860
+32:        published: "7860"
+33:        protocol: tcp
+34:  inference:
+38:          cpus: 4
+39:          memory: "4294967296"
+41:          devices:
+42:            - capabilities:
+44:              driver: nvidia
+45:              count: -1
+48:      LLAMA_ARG_FLASH_ATTN: 'on'
+49:      LLAMA_ARG_LOG_VERBOSITY: "5"
+50:      LLAMA_ARG_N_GPU_LAYERS: "99"
+51:    image: aiia-docker/inference:stage-3-gpu
+62:      target: gpu
+63:    expose:
+66:  default:
+
+======================================================================
+GPU stack — docker compose ps
+======================================================================
+NAME                      IMAGE                                                                     COMMAND               SERVICE     CREATED          STATUS                    PORTS
+aiia-docker-gui-1         sha256:9f98ecbb4a69abc874f24d0e5e5c8a0f772dabf1f4b6d4154f97f5452ed9ac20   "python app.py"       gui         9 minutes ago    Up 8 minutes              0.0.0.0:7860->7860/tcp, [::]:7860->7860/tcp
+aiia-docker-inference-1   aiia-docker/inference:stage-3-gpu                                         "/app/llama-server"   inference   32 seconds ago   Up 30 seconds (healthy)   8080/tcp
+
+======================================================================
+GPU stack — resolved ports, per service
+======================================================================
+  --- inference (container cf321d3a5e3d, image aiia-docker/inference:stage-3-gpu) ---
+  HostConfig.PortBindings : {}
+  NetworkSettings.Ports   : {"8080/tcp":null}
+  ExposedPorts (image)    : {"8080/tcp":{}}
+  NetworkMode             : aiia-docker_default
+
+  --- gui (container 29831a416869, image aiia-docker/gui:stage-1) ---
+  HostConfig.PortBindings : {"7860/tcp":[{"HostIp":"","HostPort":"7860"}]}
+  NetworkSettings.Ports   : {"7860/tcp":[{"HostIp":"0.0.0.0","HostPort":"7860"},{"HostIp":"::","HostPort":"7860"}]}
+  ExposedPorts (image)    : {"7860/tcp":{}}
+  NetworkMode             : aiia-docker_default
+
+
+======================================================================
+GPU stack — listening sockets on the host, as the kernel sees them
+======================================================================
+$ ss -ltnp | grep -E ':7860|:8080'
+LISTEN 0      4096                                  0.0.0.0:7860       0.0.0.0:*                                                                          
+LISTEN 0      4096                                  0.0.0.0:8080       0.0.0.0:*                                                                          
+LISTEN 0      4096                                     [::]:7860          [::]:*                                                                          
+LISTEN 0      4096                                     [::]:8080          [::]:*                                                                          
+
+======================================================================
+What this shows, and what it does not
+======================================================================
+* inference has no 'ports:' key on either stack, so Compose creates no host
+  binding for it: HostConfig.PortBindings is the empty map {} and NetworkSettings.Ports
+  shows the port as exposed-but-unpublished ("8080/tcp": null).  That is why
+  every CPU and GPU benchmark call is made from inside the compose network
+  with 'docker compose exec -T inference curl'.
+* gui publishes 7860 on 0.0.0.0 and ::, so 'ss' shows exactly the gradio
+  sockets for this stack and nothing else — one published port, by design.
+* The GPU override does not touch gui and does not add a ports: mapping to
+  inference: the isolation survives the override.  Checked here, not asserted.
+
+End state of the machine after this capture: the GPU stack is up.

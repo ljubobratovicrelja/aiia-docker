@@ -1,0 +1,391 @@
+======================================================================
+gpu-vram.txt — device memory on the RTX 3090 Ti: idle, during generation, after; and the offload decision
+======================================================================
+machine         : mint (tailscale), relja-linux, x86_64, Linux 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine / compose: 29.9.2 / 5.6.1
+host driver     : 580.178.04
+date            : 2026-10-24T19:24:59+02:00
+repo            : /var/tmp/aiia-mint-measure @ 3067837 (clean rsync of ~/Projects/aiia-docker)
+command         : nvidia-smi (host and inside the inference container), nvidia-smi --query-compute-apps, docker compose logs inference | grep offload
+
+
+======================================================================
+0. What 'device memory used' means on this machine (read this before the numbers)
+======================================================================
+IMPORTANT: mint's 3090 Ti also drives the desktop.  Xorg, gnome-shell and the
+browser compositors hold ~4.7 GiB of the 24 GiB on their own (see the process
+table in section 1), so the device-wide 'Memory-Usage' counter is NOT the
+model's footprint.  Two numbers are given for that reason:
+  * llama.cpp's own accounting — model buffers + KV + recurrent state + compute
+    (section 5: 1211.05 + 48.00 + 77.06 + 56.02 MiB, projected 1392 MiB);
+  * the driver's per-process figure for /app/llama-server (1696-1698 MiB across two
+    loads), which is
+    the buffers plus the CUDA context.
+The device counter is quoted alongside them so the arithmetic is checkable, but
+it is never quoted as 'the model uses 6.4 GB'.
+
+======================================================================
+1. Host GPU, stack up and idle (model already loaded)
+======================================================================
+Sat Oct 24 19:24:59 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.178.04             Driver Version: 580.178.04     CUDA Version: 13.0     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 3090 Ti     Off |   00000000:01:00.0  On |                  Off |
+|  0%   56C    P3             71W /  450W |    6469MiB /  24564MiB |     50%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|    0   N/A  N/A            2031      G   /usr/lib/xorg/Xorg                     2277MiB |
+|    0   N/A  N/A          871932    C+G   handy                                    37MiB |
+|    0   N/A  N/A         2359427      G   /usr/bin/gnome-shell                    356MiB |
+|    0   N/A  N/A         2541455      G   ...rack-uuid=3190708999430457380        215MiB |
+|    0   N/A  N/A         2541461      G   ...rack-uuid=3190709085638307488         92MiB |
+|    0   N/A  N/A         2541467      G   ...rack-uuid=3190723980855539192       1444MiB |
+|    0   N/A  N/A         2865872      C   /app/llama-server                      1696MiB |
++-----------------------------------------------------------------------------------------+
+
+--- per-process device memory ---
+pid, process_name, used_gpu_memory [MiB]
+871932, handy, 37 MiB
+2865872, /app/llama-server, 1696 MiB
+
+======================================================================
+2. Device counters sampled WHILE requests are generating
+======================================================================
+Two loads, both sampled every 0.2 s from the host:
+  2a. the measured request (scripts/bench_probe.py gui, max_tokens 160), run 10x
+      back to back.  On this GPU one such request is over in ~0.2 s, so a
+      single run is shorter than the sampler's resolution — the run count is
+      what makes the window long enough to observe.
+  2b. one deliberately long request (max_tokens 800) through the isolated API,
+      so there is a sustained generation window to sample.
+
+== 2a. 10 x the measured request ==
+TIME      memory.used / total      util%   pstate  tempC
+19:24:59.928  6469 MiB, 24564 MiB, 50 %, P3, 56
+19:25:00.188  6458 MiB, 24564 MiB, 50 %, P3, 56
+19:25:00.471  6449 MiB, 24564 MiB, 14 %, P2, 59
+19:25:00.713  6449 MiB, 24564 MiB, 14 %, P2, 59
+19:25:00.953  6449 MiB, 24564 MiB, 14 %, P2, 64
+19:25:01.207  6450 MiB, 24564 MiB, 14 %, P2, 64
+19:25:01.464  6445 MiB, 24564 MiB, 87 %, P2, 63
+19:25:01.704  6444 MiB, 24564 MiB, 87 %, P2, 63
+19:25:01.942  6444 MiB, 24564 MiB, 87 %, P2, 61
+19:25:02.200  6432 MiB, 24564 MiB, 87 %, P2, 61
+19:25:02.455  6430 MiB, 24564 MiB, 94 %, P2, 65
+19:25:02.693  6430 MiB, 24564 MiB, 94 %, P2, 65
+19:25:02.928  6430 MiB, 24564 MiB, 94 %, P2, 63
+19:25:03.169  6430 MiB, 24564 MiB, 94 %, P2, 63
+19:25:03.387  6427 MiB, 24564 MiB, 93 %, P2, 65
+
+== 2b. one long request (max_tokens 800, ignore_eos), sustained generation ==
+TIME      memory.used / total      util%   pstate  tempC
+19:25:03.627  6428 MiB, 24564 MiB, 93 %, P2, 65
+19:25:03.907  6428 MiB, 24564 MiB, 93 %, P2, 64
+19:25:04.163  6382 MiB, 24564 MiB, 93 %, P2, 64
+19:25:04.401  6366 MiB, 24564 MiB, 94 %, P2, 66
+19:25:04.620  6340 MiB, 24564 MiB, 94 %, P2, 66
+19:25:04.840  6339 MiB, 24564 MiB, 94 %, P2, 67
+19:25:05.077  6339 MiB, 24564 MiB, 94 %, P2, 67
+19:25:05.296  6340 MiB, 24564 MiB, 93 %, P2, 67
+19:25:05.552  6339 MiB, 24564 MiB, 93 %, P2, 67
+19:25:05.789  6339 MiB, 24564 MiB, 93 %, P2, 67
+19:25:06.025  6339 MiB, 24564 MiB, 93 %, P2, 67
+19:25:06.280  6340 MiB, 24564 MiB, 93 %, P2, 67
+19:25:06.520  6339 MiB, 24564 MiB, 94 %, P2, 67
+19:25:06.756  6340 MiB, 24564 MiB, 94 %, P2, 67
+19:25:06.991  6340 MiB, 24564 MiB, 94 %, P2, 61
+19:25:07.228  6340 MiB, 24564 MiB, 94 %, P2, 61
+19:25:07.484  6340 MiB, 24564 MiB, 12 %, P2, 61
+19:25:07.720  6340 MiB, 24564 MiB, 12 %, P2, 61
+19:25:07.959  6340 MiB, 24564 MiB, 12 %, P2, 61
+19:25:08.219  6340 MiB, 24564 MiB, 12 %, P2, 61
+19:25:08.476  6340 MiB, 24564 MiB, 13 %, P2, 60
+19:25:08.712  6340 MiB, 24564 MiB, 13 %, P2, 60
+19:25:08.949  6340 MiB, 24564 MiB, 13 %, P2, 60
+19:25:09.189  6341 MiB, 24564 MiB, 13 %, P2, 60
+19:25:09.443  6341 MiB, 24564 MiB, 13 %, P2, 59
+19:25:09.684  6341 MiB, 24564 MiB, 13 %, P2, 59
+19:25:09.920  6341 MiB, 24564 MiB, 13 %, P2, 59
+19:25:10.175  6341 MiB, 24564 MiB, 13 %, P2, 59
+19:25:10.431  6341 MiB, 24564 MiB, 13 %, P2, 59
+19:25:10.696  6341 MiB, 24564 MiB, 13 %, P2, 59
+
+the long request itself: 2.600422 s, 200
+(ignore_eos is used ONLY as a load generator here: it forces the server to keep
+ decoding past the model's EOS so the sampler has a window to look at.  It is
+ not part of any measured number.)
+== 2c. what the numbers above mean ==
+Device memory does NOT grow during generation: llama.cpp allocates the model
+buffers, the KV cache for n_ctx=4096 and the compute buffer at load time and
+then reuses them, so 'during' and 'after' are the same ~6.4-6.5 GiB device-wide
+figure and the model's own share stays 1696-1698 MiB.  What changes under load is
+utilization (6-8% idle vs 94% generating), not memory.  The GB10 artifact had
+the same shape for a different reason (unified memory, no VRAM counters); here
+the counters exist and still show no per-request growth.
+
+======================================================================
+3. nvidia-smi run INSIDE the inference container, DURING generation
+======================================================================
+$ docker compose -f compose.yaml -f compose.gpu.yaml exec -T inference nvidia-smi
+(started 0.3 s into a forced long generation, see 2b)
+
+--- counters from inside the container, 5 samples during the same generation ---
+TIME      memory.used, util, temp (from inside the container)
+19:25:11.160  6342 MiB, 13 %, 59
+19:25:11.287  6342 MiB, 94 %, 65
+19:25:11.391  6340 MiB, 94 %, 65
+19:25:11.478  6340 MiB, 94 %, 65
+19:25:11.588  6338 MiB, 94 %, 65
+
+--- one full nvidia-smi inside the container, mid-generation ---
+Sat Oct 24 17:25:11 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.178.04             Driver Version: 580.178.04     CUDA Version: 13.4     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 3090 Ti     Off |   00000000:01:00.0  On |                  Off |
+| 37%   65C    P2            271W /  450W |    6338MiB /  24564MiB |     94%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+
+Note the CUDA Version in the header: the container's own toolkit (13.4), not the
+host driver's 13.0.  It is the image's, which is the point of the GPU target.
+
+======================================================================
+4. nvidia-smi INSIDE the container, after generation (idle, model still resident)
+======================================================================
+Sat Oct 24 17:25:18 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 580.178.04             Driver Version: 580.178.04     CUDA Version: 13.4     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA GeForce RTX 3090 Ti     Off |   00000000:01:00.0  On |                  Off |
+| 40%   60C    P2            136W /  450W |    6338MiB /  24564MiB |     13%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+
+--- the same counters as CSV, from inside ---
+name, memory.total [MiB], memory.used [MiB], memory.free [MiB], utilization.gpu [%], temperature.gpu
+NVIDIA GeForce RTX 3090 Ti, 24564 MiB, 6338 MiB, 17753 MiB, 13 %, 60
+
+--- per-process, from inside (names are '[Not Found]' because the container's
+--- /proc does not hold the host PIDs; the memory column is still the host's) ---
+pid, process_name, used_gpu_memory [MiB]
+871932, [Not Found], 37 MiB
+2865872, [Not Found], 1698 MiB
+
+======================================================================
+5. llama.cpp's own accounting: offload decision and buffer sizes (current boot)
+======================================================================
+Taken from the running container's log, cut at the last 'llama_server:
+initializing' line so only THIS process's boot is reported.  The CUDA server
+loads the model twice — a no_alloc probe that --fit uses to size the request,
+then the real load — so the FIRST 'offloaded' block reports 0.00 MiB buffer
+sizes.  Both are kept, in order, so the difference is visible.
+
+log lines: 122072 total, 60220 in the current boot
+
+--- device discovery ---
+0.00.214.059 I cmn  common_param: device_info:
+0.00.303.046 I cmn  common_param:   - CUDA0   : NVIDIA GeForce RTX 3090 Ti (24089 MiB, 18970 MiB free)
+0.00.346.154 I llama_prepare_model_devices: using device CUDA0 (NVIDIA GeForce RTX 3090 Ti) (0000:01:00.0) - 18970 MiB free
+0.00.515.052 I llama_prepare_model_devices: using device CUDA0 (NVIDIA GeForce RTX 3090 Ti) (0000:01:00.0) - 18970 MiB free
+
+--- offload decision and buffer sizes (model load only, decode noise excluded) ---
+0.00.456.030 I load_tensors: offloading output layer to GPU
+0.00.456.030 I load_tensors: offloading 23 repeating layers to GPU
+0.00.456.030 I load_tensors: offloaded 25/25 layers to GPU
+0.00.456.033 I load_tensors:        CUDA0 model buffer size =     0.00 MiB
+0.00.456.033 I load_tensors:    CUDA_Host model buffer size =     0.00 MiB
+0.00.458.701 I llama_context: n_ctx                 = 4096
+0.00.458.703 I llama_context: flash_attn            = enabled
+0.00.460.257 I llama_context:  CUDA_Host  output buffer size =     3.79 MiB
+0.00.460.309 I llama_kv_cache:      CUDA0 KV buffer size =     0.00 MiB
+0.00.460.640 I llama_memory_recurrent:      CUDA0 RS buffer size =    77.06 MiB
+0.00.465.290 I sched_reserve:      CUDA0 compute buffer size =    56.02 MiB
+0.00.465.290 I sched_reserve:  CUDA_Host compute buffer size =    20.02 MiB
+0.00.485.328 I common_params_fit_impl: projected to use 1392 MiB of device memory vs. 18892 MiB of free device memory
+0.00.675.478 I load_tensors: offloading output layer to GPU
+0.00.675.480 I load_tensors: offloading 23 repeating layers to GPU
+0.00.675.480 I load_tensors: offloaded 25/25 layers to GPU
+0.00.675.482 I load_tensors:   CPU_Mapped model buffer size =   397.85 MiB
+0.00.675.483 I load_tensors:        CUDA0 model buffer size =  1211.05 MiB
+0.00.813.039 I llama_context: n_ctx                 = 4096
+0.00.813.040 I llama_context: flash_attn            = enabled
+0.00.814.515 I llama_context:  CUDA_Host  output buffer size =     3.79 MiB
+0.00.814.640 I llama_kv_cache:      CUDA0 KV buffer size =    48.00 MiB
+0.00.814.950 I llama_memory_recurrent:      CUDA0 RS buffer size =    77.06 MiB
+0.00.824.509 I sched_reserve:      CUDA0 compute buffer size =    56.02 MiB
+0.00.824.511 I sched_reserve:  CUDA_Host compute buffer size =    20.02 MiB
+0.00.870.754 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 4096
+0.00.870.760 I slot   load_model: id  1 | task -1 | new slot, n_ctx = 4096
+0.00.870.761 I slot   load_model: id  2 | task -1 | new slot, n_ctx = 4096
+0.00.870.761 I slot   load_model: id  3 | task -1 | new slot, n_ctx = 4096
+0.37.600.981 D slot handle_last_: id  0 | task 0 | slot decode token, id=71093, n_ctx = 4096, n_tokens = 32, truncated = 0
+0.37.605.392 D slot handle_last_: id  0 | task 0 | slot decode token, id=12305, n_ctx = 4096, n_tokens = 33, truncated = 0
+0.37.609.093 D slot handle_last_: id  0 | task 0 | slot decode token, id=198, n_ctx = 4096, n_tokens = 34, truncated = 0
+
+--- server ready line ---
+0.00.874.308 I srv  llama_server: listening on http://0.0.0.0:8080
+
+======================================================================
+6. Device memory DURING model load (container stopped, then started)
+======================================================================
+
+Why this section exists: sections 2-4 show that memory does not move WHILE
+serving, so the allocation must all happen at load.  This is the load itself:
+container stopped, then started at T0, device counters sampled every 100 ms by
+nvidia-smi's own loop (one process, so the sampling overhead does not pollute
+the figures the way three nvidia-smi calls per iteration did).
+
+T0 ($ docker compose start inference) = t+1.0s in the table below: the sampler is
+started 1 s before the start command so the pre-load baseline is captured too.
+time      memory.used, util%
+t+  0.0s      4631 MiB, 22
+t+  0.1s      4631 MiB, 22
+t+  0.2s      4631 MiB, 22
+t+  0.3s      4631 MiB, 22
+t+  0.4s      4631 MiB, 22
+t+  0.5s      4631 MiB, 22
+t+  0.6s      4631 MiB, 22
+t+  0.7s      4631 MiB, 22
+t+  0.8s      4631 MiB, 22
+t+  0.9s      4631 MiB, 25
+t+  1.0s      4631 MiB, 25
+t+  1.1s      4631 MiB, 25
+t+  1.2s      4631 MiB, 25
+t+  1.3s      4631 MiB, 25
+t+  1.4s      4634 MiB, 25
+t+  1.5s      4649 MiB, 25
+t+  1.6s      4901 MiB, 25
+t+  1.7s      4901 MiB, 25
+t+  1.8s      4901 MiB, 25
+t+  1.9s      6113 MiB, 12
+t+  2.0s      6113 MiB, 12
+t+  2.1s      6335 MiB, 12
+t+  2.2s      6335 MiB, 12
+t+  2.3s      6335 MiB, 12
+t+  2.4s      6335 MiB, 12
+t+  2.5s      6335 MiB, 12
+t+  2.6s      6335 MiB, 12
+t+  2.7s      6335 MiB, 12
+t+  2.8s      6336 MiB, 12
+t+  2.9s      6336 MiB, 12
+t+  3.0s      6336 MiB, 12
+t+  3.1s      6336 MiB, 12
+t+  3.2s      6336 MiB, 12
+t+  3.3s      6336 MiB, 12
+t+  3.4s      6336 MiB, 12
+t+  3.5s      6336 MiB, 12
+t+  3.6s      6336 MiB, 12
+t+  3.7s      6336 MiB, 12
+t+  3.8s      6336 MiB, 12
+t+  3.9s      6336 MiB, 12
+t+  4.0s      6336 MiB, 12
+t+  4.1s      6336 MiB, 12
+t+  4.2s      6336 MiB, 12
+t+  4.3s      6336 MiB, 12
+t+  4.4s      6336 MiB, 12
+t+  4.5s      6336 MiB, 12
+t+  4.6s      6336 MiB, 12
+t+  4.7s      6336 MiB, 12
+t+  4.8s      6337 MiB, 12
+t+  4.9s      6335 MiB, 24
+t+  5.0s      6335 MiB, 24
+t+  5.1s      6335 MiB, 24
+t+  5.2s      6335 MiB, 24
+t+  5.3s      6336 MiB, 24
+t+  5.4s      6336 MiB, 24
+t+  5.5s      6336 MiB, 24
+t+  5.6s      6336 MiB, 24
+t+  5.7s      6336 MiB, 24
+t+  5.8s      6336 MiB, 24
+t+  5.9s      6336 MiB, 12
+t+  6.0s      6336 MiB, 12
+t+  6.1s      6336 MiB, 12
+t+  6.2s      6336 MiB, 12
+t+  6.3s      6336 MiB, 12
+t+  6.4s      6336 MiB, 12
+t+  6.5s      6336 MiB, 12
+t+  6.6s      6336 MiB, 12
+t+  6.7s      6336 MiB, 12
+t+  6.8s      6336 MiB, 12
+t+  6.9s      6336 MiB, 11
+t+  7.0s      6336 MiB, 11
+t+  7.1s      6336 MiB, 11
+t+  7.2s      6337 MiB, 11
+t+  7.3s      6370 MiB, 11
+t+  7.4s      6370 MiB, 11
+t+  7.5s      6370 MiB, 11
+t+  7.6s      6391 MiB, 11
+t+  7.7s      6391 MiB, 11
+t+  7.8s      6391 MiB, 11
+t+  7.9s      6392 MiB, 19
+t+  8.0s      6392 MiB, 19
+t+  8.1s      6392 MiB, 19
+t+  8.2s      6393 MiB, 19
+t+  8.3s      6393 MiB, 19
+t+  8.4s      6526 MiB, 19
+t+  8.5s      6542 MiB, 19
+t+  8.6s      6542 MiB, 19
+t+  8.7s      6542 MiB, 19
+t+  8.8s      6542 MiB, 19
+t+  8.9s      6543 MiB, 12
+t+  9.0s      6541 MiB, 12
+t+  9.1s      6540 MiB, 12
+t+  9.2s      6541 MiB, 12
+t+  9.3s      6541 MiB, 12
+t+  9.4s      6541 MiB, 12
+t+  9.5s      6541 MiB, 12
+t+  9.6s      6541 MiB, 12
+t+  9.7s      6541 MiB, 12
+t+  9.8s      6541 MiB, 12
+t+  9.9s      6541 MiB, 14
+
+--- the same boot's load lines ---
+0.00.874.308 I srv  llama_server: listening on http://0.0.0.0:8080
+0.57.543.031 D ~llama_context:      CUDA0 compute buffer size is  56.0198 MiB, matches expectation of  56.0198 MiB
+0.57.543.033 D ~llama_context:  CUDA_Host compute buffer size is  20.0235 MiB, matches expectation of  20.0235 MiB
+0.00.210.025 I srv  llama_server: initializing ...
+0.00.449.640 I load_tensors:        CUDA0 model buffer size =     0.00 MiB
+0.00.453.888 I llama_kv_cache:      CUDA0 KV buffer size =     0.00 MiB
+0.00.459.043 I sched_reserve:      CUDA0 compute buffer size =    56.02 MiB
+0.00.459.044 I sched_reserve:  CUDA_Host compute buffer size =    20.02 MiB
+0.00.480.741 I common_params_fit_impl: projected to use 1392 MiB of device memory vs. 19111 MiB of free device memory
+0.00.669.558 I load_tensors:        CUDA0 model buffer size =  1211.05 MiB
+0.00.808.034 I llama_kv_cache:      CUDA0 KV buffer size =    48.00 MiB
+0.00.817.668 I sched_reserve:      CUDA0 compute buffer size =    56.02 MiB
+0.00.817.669 I sched_reserve:  CUDA_Host compute buffer size =    20.02 MiB
+0.00.867.605 I srv  llama_server: listening on http://0.0.0.0:8080
+
+health after restart: healthy
+per-process, settled: /app/llama-server, 1696 MiB
+
+Reading: the device-wide figure steps out of the desktop's ~4.7 GiB baseline and
+plateaus at the loaded value; the per-process column ends at 1696-1698 MiB (measured on two separate loads), of which
+1392 MiB is llama.cpp's own buffers (model 1211.05 + KV 48 + recurrent 77.06 +
+compute 56.02) and the rest is the CUDA context.  Nothing moves after the
+plateau — that is why sections 2-4 look flat.

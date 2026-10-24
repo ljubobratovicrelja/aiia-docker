@@ -1,0 +1,283 @@
+======================================================================
+mem-stats.txt — resident memory (docker stats) against the Compose limits, both stacks
+======================================================================
+machine         : mint (tailscale), relja-linux, x86_64, Linux 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine / compose: 29.9.2 / 5.6.1
+host driver     : 580.178.04
+date            : 2026-10-24T19:04:31+02:00
+repo            : /var/tmp/aiia-mint-measure @ 3067837 (clean rsync of ~/Projects/aiia-docker)
+command         : docker compose up -d; request in flight; docker stats --no-stream sampled every 2 s; docker inspect .HostConfig
+(CPU stack on this page; the GPU stack section is appended after the GPU benchmark)
+
+Method: the limits quoted are what Compose resolved into the container
+(docker inspect .HostConfig), not what the yaml says.  RSS is
+'docker stats --no-stream', sampled every 2 s while a request is in flight, so
+the numbers are under load rather than on an idle container.  Every sample is
+kept, not just the peak: one sample of a process that has just faulted its
+weights in can miss the plateau.
+
+======================================================================
+A. Compose limits as resolved on the CPU stack
+======================================================================
+  inference container 89b279f7d63cbeb0f7443072022348a86352f87d3e788e86ee1a8438a24513ed
+    image      : aiia-docker/inference:stage-1
+    Memory     : 4294967296 bytes
+    MemorySwap : 8589934592 bytes
+    NanoCpus   : 4000000000
+    PidsLimit  : <no value>
+    DeviceReqs : null
+
+  gui container 29831a416869222b26134bd67b1eccdf6c8cef7dd332f24c7faef6a4b376a0d6
+    image      : aiia-docker/gui:stage-1
+    Memory     : 536870912 bytes
+    MemorySwap : 1073741824 bytes
+    NanoCpus   : 1000000000
+    PidsLimit  : <no value>
+    DeviceReqs : null
+
+  (compose.yaml declares deploy.resources.limits: inference 4.0 cpus / 4g,
+   gui 1.0 cpus / 512m; Compose applies them as Memory/NanoCpus above.)
+
+======================================================================
+B. RSS while serving a request, CPU stack
+======================================================================
+
+Load: the project's own fixed prompt, once through the published gradio API
+(both containers active) and once through the isolated API inside the compose
+network (inference only).
+
+B1 gui path
+--- docker stats --no-stream, 2 s apart, during: gui -> inference (end to end) ---
+TIME      NAME  CPU%  MEM_USAGE/LIMIT  MEM%
+19:04:32  aiia-docker-gui-1  1.99%  200.9MiB / 512MiB  39.24%
+19:04:32  aiia-docker-inference-1  0.00%  888.6MiB / 4GiB  21.69%
+19:04:36  aiia-docker-gui-1  2.07%  200.9MiB / 512MiB  39.24%
+19:04:36  aiia-docker-inference-1  0.00%  888.6MiB / 4GiB  21.69%
+19:04:40  aiia-docker-gui-1  2.00%  200.9MiB / 512MiB  39.24%
+19:04:40  aiia-docker-inference-1  0.00%  888.6MiB / 4GiB  21.69%
+19:04:44  aiia-docker-gui-1  2.08%  200.9MiB / 512MiB  39.24%
+19:04:44  aiia-docker-inference-1  0.00%  888.6MiB / 4GiB  21.69%
+19:04:48  aiia-docker-gui-1  2.23%  200.9MiB / 512MiB  39.24%
+19:04:48  aiia-docker-inference-1  0.00%  888.6MiB / 4GiB  21.69%
+19:04:52  aiia-docker-gui-1  1.61%  200.9MiB / 512MiB  39.24%
+19:04:52  aiia-docker-inference-1  0.00%  888.6MiB / 4GiB  21.69%
+19:04:56  aiia-docker-gui-1  2.55%  200.9MiB / 512MiB  39.24%
+19:04:56  aiia-docker-inference-1  0.00%  888.7MiB / 4GiB  21.70%
+
+B2 isolated inference path
+--- docker stats --no-stream, 2 s apart, during: inference API only ---
+TIME      NAME  CPU%  MEM_USAGE/LIMIT  MEM%
+19:05:01  aiia-docker-gui-1  2.70%  200.9MiB / 512MiB  39.24%
+19:05:01  aiia-docker-inference-1  402.13%  930.4MiB / 4GiB  22.71%
+19:05:05  aiia-docker-gui-1  1.95%  200.9MiB / 512MiB  39.24%
+19:05:05  aiia-docker-inference-1  126.47%  928.8MiB / 4GiB  22.68%
+19:05:09  aiia-docker-gui-1  1.92%  200.9MiB / 512MiB  39.24%
+19:05:09  aiia-docker-inference-1  0.00%  928.8MiB / 4GiB  22.68%
+19:05:13  aiia-docker-gui-1  2.20%  200.9MiB / 512MiB  39.24%
+19:05:13  aiia-docker-inference-1  0.00%  928.8MiB / 4GiB  22.68%
+19:05:17  aiia-docker-gui-1  2.23%  200.9MiB / 512MiB  39.24%
+19:05:17  aiia-docker-inference-1  0.00%  928.8MiB / 4GiB  22.68%
+19:05:21  aiia-docker-gui-1  2.54%  200.9MiB / 512MiB  39.24%
+19:05:21  aiia-docker-inference-1  0.00%  928.8MiB / 4GiB  22.68%
+19:05:25  aiia-docker-gui-1  1.92%  200.9MiB / 512MiB  39.24%
+19:05:25  aiia-docker-inference-1  0.00%  928.9MiB / 4GiB  22.68%
+
+B3 idle (stack up, nothing in flight)
+TIME      NAME  CPU%  MEM_USAGE/LIMIT  MEM%
+19:05:29  aiia-docker-gui-1  2.16%  200.9MiB / 512MiB  39.24%
+19:05:29  aiia-docker-inference-1  0.00%  928.9MiB / 4GiB  22.68%
+19:05:34  aiia-docker-gui-1  1.98%  200.9MiB / 512MiB  39.24%
+19:05:34  aiia-docker-inference-1  0.00%  928.9MiB / 4GiB  22.68%
+19:05:38  aiia-docker-gui-1  2.27%  200.9MiB / 512MiB  39.24%
+19:05:38  aiia-docker-inference-1  0.00%  928.9MiB / 4GiB  22.68%
+======================================================================
+mem-stats.txt — resident memory (docker stats) against the Compose limits
+======================================================================
+machine         : mint (tailscale), relja-linux, x86_64, Linux 5.15.0-198-generic
+cpu             : AMD Ryzen 9 7950X3D 16-Core Processor  (32 threads)
+gpu             : NVIDIA GeForce RTX 3090 Ti, 580.178.04, 24564 MiB
+engine / compose: 29.9.2 / 5.6.1
+host driver     : 580.178.04
+date            : 2026-10-24T19:05:50+02:00
+repo            : /var/tmp/aiia-mint-measure @ 3067837 (clean rsync of ~/Projects/aiia-docker)
+command         : docker compose [ -f compose.yaml -f compose.gpu.yaml ] up -d; scripts/bench_probe.py as load; docker stats --no-stream every ~2 s; docker inspect .HostConfig
+
+Method: the limits quoted are what Compose resolved into the container
+(docker inspect .HostConfig), not what the yaml says.  RSS comes from
+'docker stats --no-stream', sampled in a loop while requests are in flight, so
+the numbers are taken under load rather than on an idle container.  The load
+generator is the project's own probe (scripts/bench_probe.py), i.e. exactly
+the request the benchmark measures — not a hand-rolled curl that might return
+before any token is generated.
+
+Section order: CPU stack, then the GPU stack (appended after the GPU
+benchmark).  RSS against a limit is only half the story on the GPU stack —
+see evidence/gpu-vram.txt for the device side.
+
+======================================================================
+Compose limits as resolved on the CPU stack (compose.yaml alone)
+======================================================================
+  inference  (container 89b279f7d63c)
+    image      : aiia-docker/inference:stage-1
+    Memory     : 4294967296 bytes
+    MemorySwap : 8589934592 bytes
+    NanoCpus   : 4000000000
+    DeviceReqs : null
+  gui  (container 29831a416869)
+    image      : aiia-docker/gui:stage-1
+    Memory     : 536870912 bytes
+    MemorySwap : 1073741824 bytes
+    NanoCpus   : 1000000000
+    DeviceReqs : null
+  (compose.yaml declares deploy.resources.limits: inference 4.0 cpus / 4g,
+   gui 1.0 cpus / 512m.  The GPU override does not change them: Compose
+   merges maps, so the GPU container runs under the same 4 GiB / 4 CPU.)
+
+======================================================================
+RSS while serving, CPU stack
+======================================================================
+
+B1 gui path (probe: end to end through the published port)
+--- docker stats --no-stream during: gui -> inference, 3 probe runs ---
+TIME      NAME  CPU%  MEM_USAGE/LIMIT  MEM%
+19:05:51  aiia-docker-gui-1  2.86%  200.9MiB / 512MiB  39.25%
+19:05:51  aiia-docker-inference-1  406.32%  929MiB / 4GiB  22.68%
+19:05:53  aiia-docker-gui-1  3.00%  200.9MiB / 512MiB  39.25%
+19:05:53  aiia-docker-inference-1  408.27%  929MiB / 4GiB  22.68%
+19:05:55  aiia-docker-gui-1  2.93%  200.9MiB / 512MiB  39.25%
+19:05:55  aiia-docker-inference-1  403.49%  929MiB / 4GiB  22.68%
+19:05:57  aiia-docker-gui-1  2.58%  201MiB / 512MiB  39.26%
+19:05:57  aiia-docker-inference-1  406.94%  968.9MiB / 4GiB  23.65%
+19:05:59  aiia-docker-gui-1  3.20%  201MiB / 512MiB  39.26%
+19:05:59  aiia-docker-inference-1  404.51%  968.9MiB / 4GiB  23.65%
+19:06:01  aiia-docker-gui-1  2.77%  201MiB / 512MiB  39.26%
+19:06:01  aiia-docker-inference-1  400.67%  968.9MiB / 4GiB  23.65%
+19:06:03  aiia-docker-gui-1  2.82%  201MiB / 512MiB  39.26%
+19:06:03  aiia-docker-inference-1  403.81%  968.9MiB / 4GiB  23.65%
+
+B2 isolated inference path (probe: model API only)
+--- docker stats --no-stream during: inference API only, 3 probe runs ---
+TIME      NAME  CPU%  MEM_USAGE/LIMIT  MEM%
+19:06:15  aiia-docker-gui-1  3.00%  201.1MiB / 512MiB  39.27%
+19:06:15  aiia-docker-inference-1  404.22%  1.026GiB / 4GiB  25.65%
+19:06:17  aiia-docker-gui-1  2.69%  201.1MiB / 512MiB  39.27%
+19:06:17  aiia-docker-inference-1  398.94%  1.026GiB / 4GiB  25.65%
+19:06:19  aiia-docker-gui-1  2.50%  201.1MiB / 512MiB  39.27%
+19:06:19  aiia-docker-inference-1  377.07%  1.026GiB / 4GiB  25.65%
+19:06:21  aiia-docker-gui-1  2.45%  201.1MiB / 512MiB  39.27%
+19:06:21  aiia-docker-inference-1  396.08%  1.026GiB / 4GiB  25.65%
+19:06:23  aiia-docker-gui-1  2.67%  201.1MiB / 512MiB  39.27%
+19:06:23  aiia-docker-inference-1  403.32%  1.026GiB / 4GiB  25.65%
+19:06:25  aiia-docker-gui-1  2.08%  201.1MiB / 512MiB  39.27%
+19:06:25  aiia-docker-inference-1  396.80%  1.026GiB / 4GiB  25.65%
+19:06:27  aiia-docker-gui-1  2.45%  201.1MiB / 512MiB  39.27%
+19:06:27  aiia-docker-inference-1  400.05%  1.026GiB / 4GiB  25.65%
+
+B3 idle (stack up, nothing in flight)
+TIME      NAME  CPU%  MEM_USAGE/LIMIT  MEM%
+19:06:34  aiia-docker-gui-1  2.17%  201.1MiB / 512MiB  39.27%
+19:06:34  aiia-docker-inference-1  0.00%  1.025GiB / 4GiB  25.61%
+19:06:37  aiia-docker-gui-1  1.85%  201.1MiB / 512MiB  39.27%
+19:06:37  aiia-docker-inference-1  0.00%  1.025GiB / 4GiB  25.61%
+19:06:40  aiia-docker-gui-1  2.33%  201.1MiB / 512MiB  39.27%
+19:06:40  aiia-docker-inference-1  0.00%  1.025GiB / 4GiB  25.61%
+
+======================================================================
+Compose limits as resolved on the GPU stack (compose.yaml + compose.gpu.yaml)
+======================================================================
+  inference  (container 6486d1fca317)
+    image      : aiia-docker/inference:stage-3-gpu
+    Memory     : 4294967296 bytes
+    MemorySwap : 8589934592 bytes
+    NanoCpus   : 4000000000
+    DeviceReqs : [{"Capabilities":[["gpu"]],"Count":-1,"DeviceIDs":null,"Driver":"nvidia","Options":null}]
+  gui  (container 29831a416869)
+    image      : aiia-docker/gui:stage-1
+    Memory     : 536870912 bytes
+    MemorySwap : 1073741824 bytes
+    NanoCpus   : 1000000000
+    DeviceReqs : null
+  (compose.yaml declares deploy.resources.limits: inference 4.0 cpus / 4g,
+   gui 1.0 cpus / 512m.  The GPU override does not change them: Compose
+   merges maps, so the GPU container runs under the same 4 GiB / 4 CPU.)
+
+======================================================================
+RSS while serving, GPU stack
+======================================================================
+
+B1 gui path (probe: end to end through the published port)
+--- docker stats --no-stream during: gui -> inference, 3 probe runs ---
+TIME      NAME  CPU%  MEM_USAGE/LIMIT  MEM%
+19:07:29  aiia-docker-inference-1  0.61%  767MiB / 4GiB  18.73%
+19:07:29  aiia-docker-gui-1  1.89%  201.4MiB / 512MiB  39.34%
+19:07:31  aiia-docker-inference-1  0.44%  767MiB / 4GiB  18.73%
+19:07:31  aiia-docker-gui-1  1.56%  201.4MiB / 512MiB  39.34%
+19:07:33  aiia-docker-inference-1  0.39%  767MiB / 4GiB  18.73%
+19:07:33  aiia-docker-gui-1  1.99%  201.4MiB / 512MiB  39.34%
+19:07:35  aiia-docker-inference-1  0.37%  767MiB / 4GiB  18.73%
+19:07:35  aiia-docker-gui-1  1.79%  201.4MiB / 512MiB  39.34%
+19:07:37  aiia-docker-inference-1  0.33%  767MiB / 4GiB  18.73%
+19:07:37  aiia-docker-gui-1  2.28%  201.4MiB / 512MiB  39.34%
+19:07:39  aiia-docker-inference-1  0.42%  767MiB / 4GiB  18.73%
+19:07:39  aiia-docker-gui-1  2.06%  201.4MiB / 512MiB  39.34%
+19:07:41  aiia-docker-inference-1  0.75%  767MiB / 4GiB  18.73%
+19:07:41  aiia-docker-gui-1  1.82%  201.4MiB / 512MiB  39.34%
+
+B2 isolated inference path (probe: model API only)
+--- docker stats --no-stream during: inference API only, 3 probe runs ---
+TIME      NAME  CPU%  MEM_USAGE/LIMIT  MEM%
+19:07:44  aiia-docker-inference-1  0.40%  806.7MiB / 4GiB  19.70%
+19:07:44  aiia-docker-gui-1  2.08%  201.4MiB / 512MiB  39.34%
+19:07:46  aiia-docker-inference-1  0.63%  806.8MiB / 4GiB  19.70%
+19:07:46  aiia-docker-gui-1  2.06%  201.4MiB / 512MiB  39.34%
+19:07:48  aiia-docker-inference-1  0.34%  806.8MiB / 4GiB  19.70%
+19:07:48  aiia-docker-gui-1  2.00%  201.4MiB / 512MiB  39.34%
+19:07:50  aiia-docker-inference-1  0.44%  806.8MiB / 4GiB  19.70%
+19:07:50  aiia-docker-gui-1  2.09%  201.4MiB / 512MiB  39.34%
+19:07:52  aiia-docker-inference-1  0.46%  806.8MiB / 4GiB  19.70%
+19:07:52  aiia-docker-gui-1  2.06%  201.4MiB / 512MiB  39.34%
+19:07:54  aiia-docker-inference-1  0.41%  806.8MiB / 4GiB  19.70%
+19:07:54  aiia-docker-gui-1  1.92%  201.4MiB / 512MiB  39.34%
+19:07:56  aiia-docker-inference-1  0.44%  806.8MiB / 4GiB  19.70%
+19:07:56  aiia-docker-gui-1  1.89%  201.4MiB / 512MiB  39.34%
+
+B3 idle (stack up, nothing in flight)
+TIME      NAME  CPU%  MEM_USAGE/LIMIT  MEM%
+19:07:58  aiia-docker-inference-1  0.43%  806.8MiB / 4GiB  19.70%
+19:07:58  aiia-docker-gui-1  2.00%  201.4MiB / 512MiB  39.34%
+19:08:01  aiia-docker-inference-1  0.38%  806.8MiB / 4GiB  19.70%
+19:08:01  aiia-docker-gui-1  2.10%  201.4MiB / 512MiB  39.34%
+19:08:04  aiia-docker-inference-1  0.27%  806.8MiB / 4GiB  19.70%
+19:08:04  aiia-docker-gui-1  2.19%  201.4MiB / 512MiB  39.34%
+
+======================================================================
+C. Reading the two stacks' RSS side by side (and one caveat)
+======================================================================
+
+  cpu stack, inference : 929 MiB under a gui-path load, 1.026 GiB when the
+                         isolated API is hammered, against the 4 GiB limit
+                         (22.7 % -> 25.7 %).
+  cpu stack, gui       : 201 MiB against the 512 MiB limit (39.3 %), flat.
+  gpu stack, inference : 767-807 MiB against the same 4 GiB limit (18.7-19.7 %).
+  gpu stack, gui       : 201 MiB against 512 MiB (39.3 %) — same image, same
+                         container, unchanged by the override.
+
+  The GPU container's RSS is LOWER than the CPU container's although it is
+  running the same model, because the weights live on the device: what stays
+  in the container's memory is the host-side slice (llama.cpp reports a
+  CPU_Mapped model buffer of 397.85 MiB for the mmap'd GGUF) plus runtime.
+
+  CAVEAT worth stating, because it looks like an inconsistency:
+  evidence/mint-3090ti-2026-10-24/gpu-device-and-offload.txt records
+  '2.387GiB / 4GiB (59.67 %)' for the same container, captured by docker
+  stats at a different moment.  Both are true.  docker stats reads the cgroup's
+  memory.usage_in_bytes, which includes PAGE CACHE for the mmap'd GGUF; right
+  after a build or a cold read the page cache for that 1.28 GB file is
+  resident and counted, and it is evicted later.  So on this stack RSS is a
+  range (0.77-2.39 GiB), not a constant, and the number to quote for 'what
+  the container costs' is the under-load figure with the limit beside it,
+  while the model's real footprint is the device number (1698 MiB per-process,
+  see gpu-vram.txt), which docker stats does not see at all — the same split
+  the gb10 artifact reported.
